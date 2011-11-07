@@ -433,11 +433,11 @@ ActiveRecord::Schema.define(:version => 20111217042006) do
   create_table "users", :force => true do |t|
     t.string   "username"
     t.text     "serialized_private_key"
-    t.boolean  "getting_started",                                   :default => true,  :null => false
-    t.boolean  "disable_mail",                                      :default => false, :null => false
+    t.boolean  "getting_started",                                   :default => true,         :null => false
+    t.boolean  "disable_mail",                                      :default => false,        :null => false
     t.string   "language"
-    t.string   "email",                                             :default => "",    :null => false
-    t.string   "encrypted_password",                 :limit => 128, :default => "",    :null => false
+    t.string   "email",                                             :default => "",           :null => false
+    t.string   "encrypted_password",                 :limit => 128, :default => "",           :null => false
     t.string   "invitation_token",                   :limit => 60
     t.datetime "invitation_sent_at"
     t.string   "reset_password_token"
@@ -459,7 +459,8 @@ ActiveRecord::Schema.define(:version => 20111217042006) do
     t.string   "unconfirmed_email"
     t.string   "confirm_email_token",                :limit => 30
     t.datetime "locked_at"
-    t.boolean  "show_community_spotlight_in_stream",                :default => true,  :null => false
+    t.boolean  "show_community_spotlight_in_stream",                :default => true,         :null => false
+    t.string   "hidden_shareables",                                 :default => "--- {}\n\n"
   end
 
   add_index "users", ["authentication_token"], :name => "index_users_on_authentication_token", :unique => true
