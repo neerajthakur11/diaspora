@@ -69,6 +69,7 @@ gem 'jammit', '0.6.5'
 
 gem 'json', '1.5.2'
 gem 'vanna', :git => 'git://github.com/MikeSofaer/vanna.git'
+gem 'acts_as_api'
 
 # localization
 
