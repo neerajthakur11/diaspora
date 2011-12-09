@@ -56,7 +56,7 @@
         App.user({
           current_user: #{current_user.person.as_api_response(:backbone).to_json}
         });
-  
+
     = yield(:head)
 
     -unless Rails.env == "production" 
@@ -113,6 +113,9 @@
 
     %script{:id => "comment-template", :type => 'text/template'}
       != File.read("#{Rails.root}/app/views/shared/_comment.html.underscore")
+
+    %script{:id => "comment-stream-template", :type => 'text/template'}
+      != File.read("#{Rails.root}/app/views/shared/_comment_stream.html.underscore")
 
     .container{:style=> "#{yield(:break_the_mold)}"}
       - if @aspsect == :getting_started || @page == :logged_out
