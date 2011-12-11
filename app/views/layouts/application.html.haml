@@ -59,7 +59,7 @@
 
     = yield(:head)
 
-    -unless Rails.env == "production" 
+    -unless Rails.env == "production"
       :css
         .translation_missing {
           color: purple;
@@ -108,8 +108,7 @@
     %header{:class=>('landing' unless current_user)}
       = render 'layouts/header'
 
-    - if @backbone
-      = render 'templates/templates'
+    = render 'templates/templates'
 
     .container{:style=> "#{yield(:break_the_mold)}"}
       - if @aspsect == :getting_started || @page == :logged_out
