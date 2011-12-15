@@ -28,7 +28,6 @@ class Comment < ActiveRecord::Base
     t.add :created_at
   end
 
-
   xml_attr :text
   xml_attr :diaspora_handle
 
