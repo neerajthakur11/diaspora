@@ -60,25 +60,13 @@
 #profile_photo_upload
   = owner_image_tag(:thumb_medium)
 
-  -if !aspect.nil? && aspect == :getting_started
-    %br
-    %br
-
   #file-upload.button
     =t('.upload')
 
   = image_tag('mobile-spinner.gif', :class => 'hidden', :style => "z-index:-1", :id => 'file-upload-spinner')
 
-  %br
-  %br
   %p
     #fileInfo
-
-  -if !aspect.nil? && aspect != :getting_started && current_user.person.has_photos?
-    %br
-    %br
-    %p
-      \...#{t('.or_select_one_existing', :photos => link_to(t('_photos'), person_photos_path(person))).html_safe}
 
   #publisher_photo_upload
 

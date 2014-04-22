@@ -4,6 +4,13 @@
 
 require 'spec_helper'
 
+def with_carrierwave_processing(&block)
+  UnprocessedImage.enable_processing = true
+  val = yield
+  UnprocessedImage.enable_processing = false
+  val
+end
+
 describe Photo do
   before do
     @user = alice
@@ -17,24 +24,6 @@ describe Photo do
     @photo2 = @user.build_post(:photo, :user_file => File.open(@fixture_name), :to => @aspect.id)
     @saved_photo = @user.build_post(:photo, :user_file => File.open(@fixture_name), :to => @aspect.id)
     @saved_photo.save
-  end
-
-  describe "protected attributes" do
-    it "doesn't allow mass assignment of person" do
-      @photo.save!
-      @photo.update_attributes(:author => Factory(:person))
-      @photo.reload.author.should == @user.person
-    end
-    it "doesn't allow mass assignment of person_id" do
-      @photo.save!
-      @photo.update_attributes(:author_id => Factory(:person).id)
-      @photo.reload.author.should == @user.person
-    end
-    it 'allows assignment of text' do
-      @photo.save!
-      @photo.update_attributes(:text => "this is awesome!!")
-      @photo.reload.text.should == "this is awesome!!"
-    end
   end
 
   describe 'after_create' do
@@ -65,9 +54,9 @@ describe Photo do
     end
 
     it 'sets the random prefix' do
-      photo_stub = stub.as_null_object
-      photo_stub.should_receive(:random_string=)
-      Photo.stub(:new).and_return(photo_stub)
+      photo_double = double.as_null_object
+      photo_double.should_receive(:random_string=)
+      Photo.stub(:new).and_return(photo_double)
 
       Photo.diaspora_initialize(
         :author => @user.person, :user_file => @image)
@@ -84,9 +73,9 @@ describe Photo do
       it 'saves the photo' do
         url = "https://service.com/user/profile_image"
 
-        photo_stub = stub.as_null_object
-        photo_stub.should_receive(:remote_unprocessed_image_url=).with(url)
-        Photo.stub(:new).and_return(photo_stub)
+        photo_double = double.as_null_object
+        photo_double.should_receive(:remote_unprocessed_image_url=).with(url)
+        Photo.stub(:new).and_return(photo_double)
 
         Photo.diaspora_initialize(
                 :author => @user.person, :image_url => url)
@@ -113,19 +102,18 @@ describe Photo do
   it 'should save a photo' do
     @photo.unprocessed_image.store! File.open(@fixture_name)
     @photo.save.should == true
-    begin
-      binary = @photo.unprocessed_image.read.force_encoding('BINARY')
-      fixture_binary = File.open(@fixture_name).read.force_encoding('BINARY')
-    rescue NoMethodError # Ruby 1.8 doesn't have force_encoding
-      binary = @photo.unprocessed_image.read
-      fixture_binary = File.open(@fixture_name).read
-    end
+
+    binary = @photo.unprocessed_image.read.force_encoding('BINARY')
+    fixture_binary = File.read(@fixture_name).force_encoding('BINARY')
+
     binary.should == fixture_binary
   end
 
   context 'with a saved photo' do
     before do
-      @photo.unprocessed_image.store! File.open(@fixture_name)
+      with_carrierwave_processing do
+        @photo.unprocessed_image.store! File.open(@fixture_name)
+      end
     end
     it 'should have text' do
       @photo.text= "cool story, bro"
@@ -142,8 +130,13 @@ describe Photo do
     end
 
     it 'should not use the imported filename as the url' do
-      @photo.url.include?(@fixture_filename).should be false
-      @photo.url(:thumb_medium).include?("/" + @fixture_filename).should be false
+      @photo.url.should_not include @fixture_filename
+      @photo.url(:thumb_medium).should_not include ("/" + @fixture_filename)
+    end
+
+    it 'should save the image dimensions' do
+      @photo.width.should == 40
+      @photo.height.should ==  40
     end
   end
 
@@ -152,14 +145,16 @@ describe Photo do
       file = File.open(@fail_fixture_name)
       lambda {
         @photo.unprocessed_image.store! file
-      }.should raise_error CarrierWave::IntegrityError, 'You are not allowed to upload "xml" files, allowed types: ["jpg", "jpeg", "png", "gif"]'
+      }.should raise_error CarrierWave::IntegrityError, 'You are not allowed to upload "xml" files, allowed types: jpg, jpeg, png, gif'
     end
 
   end
 
   describe 'serialization' do
     before do
-      Jobs::ProcessPhoto.perform(@saved_photo.id)
+      @saved_photo = with_carrierwave_processing do
+         @user.build_post(:photo, :user_file => File.open(@fixture_name), :to => @aspect.id)
+      end
       @xml = @saved_photo.to_xml.to_s
     end
 
@@ -171,16 +166,22 @@ describe Photo do
     it 'serializes the diaspora_handle' do
       @xml.include?(@user.diaspora_handle).should be true
     end
+
+    it 'serializes the height and width' do
+      @xml.should include 'height'
+      @xml.include?('width').should be true
+      @xml.include?('40').should be true
+    end
   end
 
   describe 'remote photos' do
     before do
-      Jobs::ProcessPhoto.perform(@saved_photo.id)
+      Workers::ProcessPhoto.new.perform(@saved_photo.id)
     end
 
     it 'should set the remote_photo on marshalling' do
       #security hax
-      user2 = Factory.create(:user)
+      user2 = FactoryGirl.create(:user)
       aspect2 = user2.aspects.create(:name => "foobars")
       connect_users(@user, @aspect, user2, aspect2)
 
@@ -202,13 +203,13 @@ describe Photo do
 
   context "commenting" do
     it "accepts comments if there is no parent status message" do
-      proc{ @user.comment("big willy style", :post => @photo) }.should change(@photo.comments, :count).by(1)
+      proc{ @user.comment!(@photo, "big willy style") }.should change(@photo.comments, :count).by(1)
     end
   end
 
   describe '#queue_processing_job' do
-    it 'should queue a resque job to process the images' do
-      Resque.should_receive(:enqueue).with(Jobs::ProcessPhoto, @photo.id)
+    it 'should queue a job to process the images' do
+      Workers::ProcessPhoto.should_receive(:perform_async).with(@photo.id)
       @photo.queue_processing_job
     end
   end
@@ -224,13 +225,13 @@ describe Photo do
     it 'is deleted with parent status message' do
       expect {
         @status_message.destroy
-      }.should change(Photo, :count).by(-1)
+      }.to change(Photo, :count).by(-1)
     end
 
     it 'will delete parent status message if message is otherwise empty' do
       expect {
         @photo2.destroy
-      }.should change(StatusMessage, :count).by(-1)
+      }.to change(StatusMessage, :count).by(-1)
     end
 
     it 'will not delete parent status message if message had other content' do
@@ -241,7 +242,7 @@ describe Photo do
       expect {
         @photo2.status_message.reload
         @photo2.destroy
-      }.should_not change(StatusMessage, :count)
+      }.to_not change(StatusMessage, :count)
     end
   end
 end

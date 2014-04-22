@@ -10,8 +10,8 @@ describe AccountDeletion do
     a.diaspora_handle.should == alice.person.diaspora_handle
   end
 
-  it 'fires a resque job after creation'do
-    Resque.should_receive(:enqueue).with(Jobs::DeleteAccount, anything)
+  it 'fires a job after creation'do
+    Workers::DeleteAccount.should_receive(:perform_async).with(anything)
 
     AccountDeletion.create(:person => alice.person)
   end
@@ -22,7 +22,7 @@ describe AccountDeletion do
     end
 
     it 'creates a deleter' do
-      AccountDeleter.should_receive(:new).with(alice.person.diaspora_handle).and_return(stub(:perform! => true))
+      AccountDeleter.should_receive(:new).with(alice.person.diaspora_handle).and_return(double(:perform! => true))
       @ad.perform!
     end
     
@@ -45,7 +45,7 @@ describe AccountDeletion do
     end
 
     it 'creates a public postzord' do
-      Postzord::Dispatcher::Public.should_receive(:new).and_return(stub.as_null_object)
+      Postzord::Dispatcher::Public.should_receive(:new).and_return(double.as_null_object)
       @ad = AccountDeletion.new(:person => alice.person)
       @ad.send(:dispatch)
     end
@@ -61,9 +61,9 @@ describe AccountDeletion do
 
     it 'includes remote resharers' do
       @ad = AccountDeletion.new(:person => alice.person)
-      sm = Factory( :status_message, :public => true, :author => alice.person)
-      r1 = Factory( :reshare, :author => remote_raphael, :root => sm)
-      r2 = Factory( :reshare, :author => local_luke.person, :root => sm)
+      sm = FactoryGirl.create( :status_message, :public => true, :author => alice.person)
+      r1 = FactoryGirl.create( :reshare, :author => remote_raphael, :root => sm)
+      r2 = FactoryGirl.create( :reshare, :author => local_luke.person, :root => sm)
 
       @ad.subscribers(alice).should == [remote_raphael]
     end

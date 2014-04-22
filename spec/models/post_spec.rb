@@ -14,10 +14,10 @@ describe Post do
     describe '.owned_or_visible_by_user' do
       before do
         @you = bob
-        @public_post = Factory(:status_message, :public => true)
-        @your_post = Factory(:status_message, :author => @you.person)
+        @public_post = FactoryGirl.create(:status_message, :public => true)
+        @your_post = FactoryGirl.create(:status_message, :author => @you.person)
         @post_from_contact = eve.post(:status_message, :text => 'wooo', :to => eve.aspects.where(:name => 'generic').first)
-        @post_from_stranger = Factory(:status_message, :public => false)
+        @post_from_stranger = FactoryGirl.create(:status_message, :public => false)
       end
 
       it 'returns post from your contacts' do
@@ -33,7 +33,7 @@ describe Post do
       end
 
       it 'returns public post from your contact' do
-        sm = Factory(:status_message, :author => eve.person, :public => true)
+        sm = FactoryGirl.create(:status_message, :author => eve.person, :public => true)
 
         StatusMessage.owned_or_visible_by_user(@you).should include(sm)
       end
@@ -47,29 +47,29 @@ describe Post do
       end
     end
 
+
     describe '.for_a_stream' do
       it 'calls #for_visible_shareable_sql' do
-        time, order = stub, stub
+        time, order = double, double
         Post.should_receive(:for_visible_shareable_sql).with(time, order).and_return(Post)
         Post.for_a_stream(time, order)
       end
 
       it 'calls includes_for_a_stream' do
         Post.should_receive(:includes_for_a_stream)
-        Post.for_a_stream(stub, stub)
+        Post.for_a_stream(double, double)
       end
 
       it 'calls excluding_blocks if a user is present' do
-        user = stub
-        Post.should_receive(:excluding_blocks).with(user)
-        Post.for_a_stream(stub, stub, user)
+        Post.should_receive(:excluding_blocks).with(alice).and_return(Post)
+        Post.for_a_stream(double, double, alice)
       end
     end
 
     describe '.excluding_blocks' do
       before do
-        @post = Factory(:status_message, :author => alice.person)
-        @other_post = Factory(:status_message, :author => eve.person)
+        @post = FactoryGirl.create(:status_message, :author => alice.person)
+        @other_post = FactoryGirl.create(:status_message, :author => eve.person)
 
         bob.blocks.create(:person => alice.person)
       end
@@ -87,11 +87,33 @@ describe Post do
       end
     end
 
+    describe '.excluding_hidden_shareables' do
+      before do
+        @post = FactoryGirl.create(:status_message, :author => alice.person)
+        @other_post = FactoryGirl.create(:status_message, :author => eve.person)
+        bob.toggle_hidden_shareable(@post)
+      end
+      it 'excludes posts the user has hidden' do
+        Post.excluding_hidden_shareables(bob).should_not include(@post)
+      end
+      it 'includes posts the user has not hidden' do
+        Post.excluding_hidden_shareables(bob).should include(@other_post)
+      end
+    end
+
+    describe '.excluding_hidden_content' do
+      it 'calls excluding_blocks and excluding_hidden_shareables' do
+        Post.should_receive(:excluding_blocks).and_return(Post)
+        Post.should_receive(:excluding_hidden_shareables)
+        Post.excluding_hidden_content(bob)
+      end
+    end
+
     context 'having some posts' do
       before do
         time_interval = 1000
         time_past = 1000000
-        @posts = (1..3).map do |n|
+        @posts = (1..5).map do |n|
           aspect_to_post = alice.aspects.where(:name => "generic").first
           post = alice.post :status_message, :text => "#{alice.username} - #{n}", :to => aspect_to_post.id
           post.created_at = (post.created_at-time_past) - time_interval
@@ -103,8 +125,6 @@ describe Post do
       end
 
       describe '.by_max_time' do
-        it 'respects time and order' do
-        end
 
         it 'returns the posts ordered and limited by unix time' do
           Post.for_a_stream(Time.now + 1, "created_at").should == @posts
@@ -121,7 +141,7 @@ describe Post do
         end
 
         it 'defaults to 15 posts' do
-          chain = stub.as_null_object
+          chain = double.as_null_object
 
           Post.stub(:by_max_time).and_return(chain)
           chain.should_receive(:limit).with(15).and_return(Post)
@@ -129,21 +149,42 @@ describe Post do
         end
 
       end
+
+      # @posts[0] is the newest, @posts[5] is the oldest
+      describe ".newer" do
+        it 'returns the next post in the array' do
+          @posts[3].created_at.should < @posts[2].created_at #post 2 is newer
+          Post.newer(@posts[3]).created_at.to_s.should == @posts[2].created_at.to_s #its the newer post, not the newest
+        end
+      end
+
+      describe ".older" do
+        it 'returns the previous post in the array' do
+          Post.older(@posts[3]).created_at.to_s.should == @posts[4].created_at.to_s #its the older post, not the oldest
+          @posts[3].created_at.should > @posts[4].created_at #post 4 is older
+        end
+      end
     end
   end
 
-
   describe 'validations' do
     it 'validates uniqueness of guid and does not throw a db error' do
-      message = Factory(:status_message)
-      Factory.build(:status_message, :guid => message.guid).should_not be_valid
+      message = FactoryGirl.create(:status_message)
+      FactoryGirl.build(:status_message, :guid => message.guid).should_not be_valid
+    end
+  end
+
+  describe 'post_type' do
+    it 'returns the class constant' do
+      status_message = FactoryGirl.create(:status_message)
+      status_message.post_type.should == "StatusMessage"
     end
   end
 
   describe 'deletion' do
     it 'should delete a posts comments on delete' do
-      post = Factory.create(:status_message, :author => @user.person)
-      @user.comment "hey", :post => post
+      post = FactoryGirl.create(:status_message, :author => @user.person)
+      @user.comment!(post, "hey")
       post.destroy
       Post.where(:id => post.id).empty?.should == true
       Comment.where(:text => "hey").empty?.should == true
@@ -162,7 +203,7 @@ describe Post do
 
   describe '.diaspora_initialize' do
     it 'takes provider_display_name' do
-      sm = Factory.build(:status_message, :provider_display_name => 'mobile')
+      sm = FactoryGirl.create(:status_message, :provider_display_name => 'mobile')
       StatusMessage.diaspora_initialize(sm.attributes.merge(:author => bob.person)).provider_display_name.should == 'mobile'
     end
   end
@@ -188,40 +229,10 @@ describe Post do
     end
   end
 
-  describe '#comments' do
-    it 'returns the comments of a post in created_at order' do
-      post = bob.post :status_message, :text => "hello", :to => 'all'
-      created_at = Time.now - 100
-
-      # Posts are created out of time order.
-      # i.e. id order is not created_at order
-      alice.comment 'comment a', :post => post, :created_at => created_at + 10
-      eve.comment   'comment d', :post => post, :created_at => created_at + 50
-      bob.comment   'comment b', :post => post, :created_at => created_at + 30
-      alice.comment 'comment e', :post => post, :created_at => created_at + 90
-      eve.comment   'comment c', :post => post, :created_at => created_at + 40
-
-      post.comments.map(&:text).should == [
-        'comment a',
-        'comment b',
-        'comment c',
-        'comment d',
-        'comment e',
-      ]
-      post.comments.map(&:author).should == [
-        alice.person,
-        bob.person,
-        eve.person,
-        eve.person,
-        alice.person,
-      ]
-    end
-  end
-
   describe 'Likeable#update_likes_counter' do
     before do
       @post = bob.post :status_message, :text => "hello", :to => 'all'
-      bob.like(1, :target => @post)
+      bob.like!(@post)
     end
     it 'does not update updated_at' do
       old_time = Time.zone.now - 10000
@@ -232,77 +243,9 @@ describe Post do
     end
   end
 
-  describe "triggers_caching?" do
-    it 'returns true' do
-      Post.new.triggers_caching?.should be_true
-    end
-  end
-
-  describe "after_create" do
-    it "calls cache_for_author only on create" do
-      post = Factory.build(:status_message, :author => bob.person)
-      post.should_receive(:cache_for_author).once
-      post.save
-      post.save
-    end
-  end
-
-  describe '#cache_for_author' do
-    before do
-      @post = Factory.build(:status_message, :author => bob.person)
-      @post.stub(:should_cache_for_author?).and_return(true)
-    end
-
-    it 'caches with valid conditions' do
-      cache = mock.as_null_object
-      RedisCache.should_receive(:new).and_return(cache)
-      cache.should_receive(:add)
-      @post.cache_for_author
-    end
-
-    it 'does nothing if should not cache' do
-      @post.stub(:should_cache_for_author?).and_return(false)
-      RedisCache.should_not_receive(:new)
-      @post.cache_for_author
-    end
-  end
-
-  describe "#should_cache_for_author?" do
-    before do
-      @post = Factory.build(:status_message, :author => bob.person)
-      RedisCache.stub(:configured?).and_return(true)
-      RedisCache.stub(:acceptable_types).and_return(['StatusMessage'])
-      @post.stub(:triggers_caching?).and_return(true)
-    end
-
-    it 'returns true under valid conditions' do
-      @post.should_cache_for_author?.should be_true
-    end
-
-    it 'does not cache if the author is not a local user' do
-      @post.author = Factory(:person)
-      @post.should_cache_for_author?.should be_false
-    end
-
-    it 'does not cache if the cache is not configured' do
-      RedisCache.stub(:configured?).and_return(false)
-      @post.should_cache_for_author?.should be_false
-    end
-
-    it 'does not cache if the object does not triggers caching' do
-      @post.stub(:triggers_caching?).and_return(false)
-      @post.should_cache_for_author?.should be_false
-    end
-
-    it 'does not cache if the object is not of an acceptable cache type' do
-      @post.stub(:type).and_return("Photo")
-      @post.should_cache_for_author?.should be_false
-    end
-  end
-
   describe "#receive" do
     it 'returns false if the post does not verify' do
-      @post = Factory(:status_message, :author => bob.person)
+      @post = FactoryGirl.create(:status_message, :author => bob.person)
       @post.should_receive(:verify_persisted_shareable).and_return(false)
       @post.receive(bob, eve.person).should == false
     end
@@ -310,9 +253,9 @@ describe Post do
 
   describe "#receive_persisted" do
     before do
-      @post = Factory.build(:status_message, :author => bob.person)
+      @post = FactoryGirl.create(:status_message, :author => bob.person)
       @known_post = Post.new
-      bob.stub(:contact_for).with(eve.person).and_return(stub(:receive_shareable => true))
+      bob.stub(:contact_for).with(eve.person).and_return(double(:receive_shareable => true))
     end
 
     context "user knows about the post" do
@@ -344,7 +287,7 @@ describe Post do
       end
 
       it 'notifies the user if they are mentioned' do
-        bob.stub(:contact_for).with(eve.person).and_return(stub(:receive_shareable => true))
+        bob.stub(:contact_for).with(eve.person).and_return(double(:receive_shareable => true))
         bob.should_receive(:notify_if_mentioned).and_return(true)
 
         @post.send(:receive_persisted, bob, eve.person, @known_post).should == true
@@ -355,18 +298,18 @@ describe Post do
   describe '#receive_non_persisted' do
     context "the user does not know about the post" do
       before do
-        @post = Factory.build(:status_message, :author => bob.person)
+        @post = FactoryGirl.create(:status_message, :author => bob.person)
         bob.stub(:find_visible_shareable_by_id).and_return(nil)
         bob.stub(:notify_if_mentioned).and_return(true)
       end
 
       it "it receives the post from the contact of the author" do
-        bob.should_receive(:contact_for).with(eve.person).and_return(stub(:receive_shareable => true))
+        bob.should_receive(:contact_for).with(eve.person).and_return(double(:receive_shareable => true))
         @post.send(:receive_non_persisted, bob, eve.person).should == true
       end
 
       it 'notifies the user if they are mentioned' do
-        bob.stub(:contact_for).with(eve.person).and_return(stub(:receive_shareable => true))
+        bob.stub(:contact_for).with(eve.person).and_return(double(:receive_shareable => true))
         bob.should_receive(:notify_if_mentioned).and_return(true)
 
         @post.send(:receive_non_persisted, bob, eve.person).should == true
@@ -394,7 +337,7 @@ describe Post do
     describe 'when post has been reshared exactly 1 time' do
       before :each do
         @post.reshares.size.should == 0
-        @reshare = Factory.create(:reshare, :root => @post)
+        @reshare = FactoryGirl.create(:reshare, :root => @post)
         @post.reload
         @post.reshares.size.should == 1
       end
@@ -407,9 +350,9 @@ describe Post do
     describe 'when post has been reshared more than once' do
       before :each do
         @post.reshares.size.should == 0
-        Factory.create(:reshare, :root => @post)
-        Factory.create(:reshare, :root => @post)
-        Factory.create(:reshare, :root => @post)
+        FactoryGirl.create(:reshare, :root => @post)
+        FactoryGirl.create(:reshare, :root => @post)
+        FactoryGirl.create(:reshare, :root => @post)
         @post.reload
         @post.reshares.size.should == 3
       end
@@ -417,6 +360,53 @@ describe Post do
       it 'returns the number of reshares' do
         @post.reshares_count.should == 3
       end
+    end
+  end
+
+  describe "#after_create" do
+    it "sets #interacted_at" do
+      post = FactoryGirl.create(:status_message)
+      post.interacted_at.should_not be_blank
+    end
+  end
+
+  describe "#find_by_guid_or_id_with_user" do
+    it "succeeds with an id" do
+      post = FactoryGirl.create :status_message, public: true
+      Post.find_by_guid_or_id_with_user(post.id).should == post
+    end
+
+    it "succeeds with an guid" do
+      post = FactoryGirl.create :status_message, public: true
+      Post.find_by_guid_or_id_with_user(post.guid).should == post
+    end
+
+    it "looks up on the passed user object if it's non-nil" do
+      post = FactoryGirl.create :status_message
+      user = double
+      user.should_receive(:find_visible_shareable_by_id).with(Post, post.id, key: :id).and_return(post)
+      Post.find_by_guid_or_id_with_user post.id, user
+    end
+
+    it "raises ActiveRecord::RecordNotFound with a non-existing id and a user" do
+      user = double(find_visible_shareable_by_id: nil)
+      expect {
+        Post.find_by_guid_or_id_with_user 123, user
+      }.to raise_error ActiveRecord::RecordNotFound
+    end
+
+    it "raises Diaspora::NonPublic for a non-existing id without a user" do
+      Post.stub where: double(includes: double(first: nil))
+      expect {
+        Post.find_by_guid_or_id_with_user 123
+      }.to raise_error Diaspora::NonPublic
+    end
+
+    it "raises Diaspora::NonPublic for a private post without a user" do
+      post = FactoryGirl.create :status_message
+      expect {
+        Post.find_by_guid_or_id_with_user post.id
+      }.to raise_error Diaspora::NonPublic
     end
   end
 end

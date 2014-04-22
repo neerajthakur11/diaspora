@@ -164,12 +164,17 @@ class CreateImportTables < ActiveRecord::Migration
       t.boolean :getting_started
       t.boolean :disable_mail
       t.string :language
-      t.string :email
-      t.database_authenticatable
-      t.invitable
-      t.recoverable
-      t.rememberable
-      t.trackable
+      t.string :email,              :null => false, :default => ""
+      t.string :encrypted_password, :null => false, :default => ""
+      t.string   :reset_password_token
+      t.datetime :reset_password_sent_at
+      t.datetime :remember_created_at
+      t.integer  :sign_in_count, :default => 0
+      t.datetime :current_sign_in_at
+      t.datetime :last_sign_in_at
+      t.string   :current_sign_in_ip
+      t.string   :last_sign_in_ip
+
 
       t.timestamps
       t.string :mongo_id
@@ -178,17 +183,17 @@ class CreateImportTables < ActiveRecord::Migration
   end
 
   def self.down
-    drop_table :mongo_users
-    drop_table :mongo_services
-    drop_table :mongo_requests
-    drop_table :mongo_post_visibilities
-    drop_table :mongo_invitations
-    drop_table :mongo_contacts
-    drop_table :mongo_comments
-    drop_table :mongo_profiles
-    drop_table :mongo_people
-    drop_table :mongo_posts
-    drop_table :mongo_aspect_memberships
-    drop_table :mongo_aspects
+    execute 'DROP TABLE mongo_users'
+    execute 'DROP TABLE mongo_services'
+    execute 'DROP TABLE mongo_requests'
+    execute 'DROP TABLE mongo_post_visibilities'
+    execute 'DROP TABLE mongo_invitations'
+    execute 'DROP TABLE mongo_contacts'
+    execute 'DROP TABLE mongo_comments'
+    execute 'DROP TABLE mongo_profiles'
+    execute 'DROP TABLE mongo_people'
+    execute 'DROP TABLE mongo_posts'
+    execute 'DROP TABLE mongo_aspect_memberships'
+    execute 'DROP TABLE mongo_aspects'
   end
 end

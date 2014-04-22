@@ -1,10 +1,11 @@
 branches:
   only:
     - 'master'
+    - 'develop'
 
+language: ruby
 rvm:
-  - ree
-  - 1.9.2
+  - 2.0.0
   - 1.9.3
 
 env:
@@ -13,13 +14,15 @@ env:
   - DB=postgres BUILD_TYPE=cucumber
   - DB=mysql BUILD_TYPE=cucumber
 
-before_install: gem install bundler --pre
-bundler_args: "--without development production"
-before_script: "./config/ci/before-travis.sh"
-script: "bundle exec rake travis"
 
+bundler_args: "--without development production heroku"
+before_install: "./script/ci/before_install.sh"
+script: "./script/ci/build.sh"
+
+addons:
+  firefox: "26.0"
 
 notifications:
   irc:
     channels:
-      - 'irc.freenode.org:6667#diaspora-dev'
+      - "irc.freenode.org:6667#diaspora-dev"

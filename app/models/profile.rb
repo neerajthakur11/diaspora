@@ -3,13 +3,12 @@
 #   the COPYRIGHT file.
 
 class Profile < ActiveRecord::Base
-  require File.join(Rails.root, 'lib/diaspora/webhooks')
-  include Diaspora::Webhooks
+  self.include_root_in_json = false
+
+  include Diaspora::Federated::Base
   include Diaspora::Taggable
-  include ROXML
 
   attr_accessor :tag_string
-
   acts_as_taggable_on :tags
   extract_tags_from :tag_string
   validates :tag_list, :length => { :maximum => 5 }
@@ -25,21 +24,19 @@ class Profile < ActiveRecord::Base
   xml_attr :bio
   xml_attr :location
   xml_attr :searchable
+  xml_attr :nsfw
   xml_attr :tag_string
 
   before_save :strip_names
   after_validation :strip_names
-  
+
   validates :first_name, :length => { :maximum => 32 }
   validates :last_name, :length => { :maximum => 32 }
-  
+
   validates_format_of :first_name, :with => /\A[^;]+\z/, :allow_blank => true
   validates_format_of :last_name, :with => /\A[^;]+\z/, :allow_blank => true
   validate :max_tags
   validate :valid_birthday
-
-  attr_accessible :first_name, :last_name, :image_url, :image_url_medium,
-    :image_url_small, :birthday, :gender, :bio, :location, :searchable, :date, :tag_string
 
   belongs_to :person
   before_validation do
@@ -57,7 +54,8 @@ class Profile < ActiveRecord::Base
 
   def receive(user, person)
     Rails.logger.info("event=receive payload_type=profile sender=#{person} to=#{user}")
-    person.profile.update_attributes self.attributes.merge(:tag_string => self.tag_string)
+    profiles_attr = self.attributes.merge('tag_string' => self.tag_string).slice('diaspora_handle', 'first_name', 'last_name', 'image_url', 'image_url_small', 'image_url_medium', 'birthday', 'gender', 'bio', 'location', 'searchable', 'nsfw', 'tag_string')
+    person.profile.update_attributes(profiles_attr) 
 
     person.profile
   end
@@ -75,7 +73,7 @@ class Profile < ActiveRecord::Base
              else
                self[:image_url]
              end
-    result || '/images/user/default.png'
+    result || '/assets/user/default.png'
   end
 
   def from_omniauth_hash(omniauth_user_hash)
@@ -85,7 +83,7 @@ class Profile < ActiveRecord::Base
                'location' =>  'location',
                 }
 
-    update_hash = Hash[omniauth_user_hash.map {|k, v| [mappings[k], v] }]
+    update_hash = Hash[ omniauth_user_hash.map {|k, v| [mappings[k], v] } ]
     
     self.attributes.merge(update_hash){|key, old, new| old.blank? ? new : old}
   end
@@ -129,6 +127,11 @@ class Profile < ActiveRecord::Base
       self.birthday = nil
     end
   end
+
+  def formatted_birthday
+    birthday.to_s(:long).gsub(', 1000', '') if birthday.present?
+  end
+
 
   def tag_string
     if @tag_string
@@ -180,8 +183,6 @@ class Profile < ActiveRecord::Base
   end
 
   def absolutify_local_url url
-    pod_url = AppConfig[:pod_url].dup
-    pod_url.chop! if AppConfig[:pod_url][-1,1] == '/'
-    "#{pod_url}#{url}"
+    "#{AppConfig.pod_uri.to_s.chomp("/")}#{url}"
   end
 end

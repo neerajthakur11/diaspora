@@ -1,4 +1,4 @@
-#   Copyright (c) 2010-2011, Diaspora Inc.  This file is
+#   Copyright (c) 2010-2013, Diaspora Inc.  This file is
 #   licensed under the Affero General Public License version 3 or later.  See
 #   the COPYRIGHT file.
 
@@ -20,7 +20,7 @@ tr:
       unauthenticated: "Devam etmeden önce bir hesap açtırmalı veya hesabınızla giriş yapmalısınız."
       unconfirmed: "Devam etmeden önce hesabınızı doğrulamalısınız."
     invitations:
-      invitation_token_invalid: "Davet kodu doğrulanamadı!"
+      invitation_token_invalid: "Özür dileriz! Bu davet kodu geçerli değildir."
       send_instructions: "Davetiniz gönderildi."
       updated: "Parolanız başarıyla ayarlandı. Şu anda giriş yapmış bulunuyorsunuz."
     mailer:
@@ -29,24 +29,9 @@ tr:
         subject: "Doğrulama talimatları"
         you_can_confirm: "Hesabınızı aşağıdaki bağlantı ile doğrulayabilirsiniz:"
       hello: "Merhaba %{email}!"
-      invitation_instructions:
-        accept: "Daveti kabul et"
-        displaying_correctly: "Email not displaying correctly? %{link} in your browser"
-        email_us: "Diaspora hesabınızla ilgili destek veya sorularınız için lütfen iletişime geçiniz: %{email}"
-        finally: "Sonunda - o burada!"
-        friends_saying: "Arkadaşların ne diyor..."
-        get_connected: "Bağlı Kal"
-        have_fun: "Keyif al"
-        here: burda
-        ignore: "Daveti kabul etmek istemiyorsanız, lütfen bu e-postayı gözardı edin."
-        more_people: "Hatta daha fazla kişi seni görmek istiyor!"
-        no_account_till: "Hesabınız yukarıdaki bağlantıya tıklayıp üye olmadan oluşturulmayacaktır."
-        or: veya
-        sign_up_now: "Şimdi kaydol &rarr;"
-        subject: "Diaspora'ya katılmak için davet edildiniz!"
-        view_in: "View in"
       inviter:
         accept_at: "%{url}, aşağıdaki bağlantıya tıklayarak bunu kabul edebilirsiniz."
+        has_invited_you: "%{name}"
         have_invited_you: "%{names} Diaspora'ya katılmanız için davet edildiniz"
       reset_password_instructions:
         change: "Parolamı değiştir"
@@ -59,7 +44,7 @@ tr:
         click_to_unlock: "Hesabınızın kilidini açmak için aşağıdaki bağlantıya tıklayın:"
         subject: "Kilit Açma Yönergeleri"
         unlock: "Hesabımın kilidini aç"
-      welcome: "Hoş geldiniz %{email}!"
+      welcome: "Hoş geldin%{email}!"
     passwords:
       edit:
         change_password: "Parola değiştirme"
@@ -67,7 +52,7 @@ tr:
         forgot_password: "Parolanızı mı unuttunuz?"
         no_account: "Bu e-posta adresiyle alınmış hesap bulunmamaktadır. Eğer bir davetiye için bekliyorsanız, en kısa zamanda size ulaştıracağız."
         send_password_instructions: "Bana parola yenileme talimatları gönder"
-      send_instructions: "Bir kaç dakika içerisinde parolanızı nasıl sıfırlayacağınızı açıklıyan bir e-posta alacaksınız."
+      send_instructions: "Bir kaç dakika içerisinde parolanızı nasıl sıfırlayacağınızı açıklayan bir e-posta alacaksınız."
       updated: "Parolanız değiştirilmiştir. Şu anda giriş yapmış bulunuyorsunuz."
     registrations:
       destroyed: "Hoşçakalın! Hesabınız iptal edildi. Umarız sizi yakında tekrar görürüz."
@@ -75,12 +60,9 @@ tr:
       updated: "Hesabınızı başarılı bir şekilde yenilediniz."
     sessions:
       new:
-        alpha_software: "Alfa programını kullanmak üzeresiniz."
-        bugs_and_feedback: "Sitede bazı hatalarla karşılaşabilirsiniz. Karşılaştığınız herhangi hata için sağ üstteki Geri Bildirim düğmesini kullanmanızı tavsiye ederiz. Raporlarınız bize ulaşır ulaşmaz, sorunu düzeltmek için çalışacağız."
-        bugs_and_feedback_mobile: "Aklınızda bulunsun, hatalarla karşılacaksınız. Karşılaştığınız hataları bildirmenizi istiyoruz.  Bildiriminizi alır almaz konu hakkında çalışmaya başlayacağız."
-        login: Giriş
+        login: "Giriş"
         modern_browsers: "sadece güncel tarayıcılar destekleniyor."
-        password: Parola
+        password: "Parola"
         remember_me: "Beni hatırla"
         sign_in: "Giriş yap"
         username: "Kullanıcı Adı"
@@ -94,8 +76,6 @@ tr:
         sign_in: "Giriş yap"
         sign_up: "Kayıt ol"
         sign_up_closed: "Şu an için yeni kayıt alınamıyor."
-      mail_signup_form:
-        sign_up_for_an_invite: "Bir davetiye için kaydolun!"
     unlocks:
       new:
         resend_unlock: "Tekrar gönder"
@@ -104,5 +84,5 @@ tr:
   errors:
     messages:
       already_confirmed: "zaten doğrulandı"
-      not_found: bulunamadı
-      not_locked: kilitlenmedi
+      not_found: "bulunamadı"
+      not_locked: "kilitlenmedi"

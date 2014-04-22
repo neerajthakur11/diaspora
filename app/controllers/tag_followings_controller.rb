@@ -2,70 +2,50 @@
 #   licensed under the Affero General Public License version 3 or later.  See
 #   the COPYRIGHT file.
 #
-require File.join(Rails.root, 'lib', 'stream', 'followed_tag')
 
 class TagFollowingsController < ApplicationController
   before_filter :authenticate_user!
 
-  def index
-    default_stream_action(Stream::FollowedTag)
-  end
+  respond_to :json
 
   # POST /tag_followings
   # POST /tag_followings.xml
   def create
     name_normalized = ActsAsTaggableOn::Tag.normalize(params['name'])
-    
+
     if name_normalized.nil? || name_normalized.empty?
-      flash[:error] = I18n.t('tag_followings.create.none')
+      render :nothing => true, :status => 403
     else
       @tag = ActsAsTaggableOn::Tag.find_or_create_by_name(name_normalized)
       @tag_following = current_user.tag_followings.new(:tag_id => @tag.id)
 
       if @tag_following.save
-        flash[:notice] = I18n.t('tag_followings.create.success', :name => name_normalized)
+        render :json => @tag.to_json, :status => 201
       else
-        flash[:error] = I18n.t('tag_followings.create.failure', :name => name_normalized)
+        render :nothing => true, :status => 403
       end
     end
-
-    redirect_to :back
   end
 
   # DELETE /tag_followings/1
   # DELETE /tag_followings/1.xml
   def destroy
-    @tag = ActsAsTaggableOn::Tag.find_by_name(params[:name])
-    @tag_following = current_user.tag_followings.where(:tag_id => @tag.id).first
-    if @tag_following && @tag_following.destroy
-      @tag_unfollowed = true
-    else
-      @tag_unfollowed = false
-    end
-
-    if params[:remote]
+    tag_following = current_user.tag_followings.find_by_tag_id( params['id'] )
+    
+    if tag_following && tag_following.destroy
       respond_to do |format|
-        format.all {}
-        format.js { render 'tags/update' }
+        format.any(:js, :json) { render :nothing => true, :status => 204 }
       end
     else
-      if @tag_unfollowed
-        flash[:notice] = I18n.t('tag_followings.destroy.success', :name => params[:name])
-      else
-        flash[:error] = I18n.t('tag_followings.destroy.failure', :name => params[:name])
+      respond_to do |format|
+        format.any(:js, :json) {render :nothing => true, :status => 403}
       end
-      redirect_to tag_path(:name => params[:name])
     end
   end
 
-  def create_multiple
-    if params[:tags].present?
-      params[:tags].split(",").each do |name|
-        name_normalized = ActsAsTaggableOn::Tag.normalize(name)
-        @tag = ActsAsTaggableOn::Tag.find_or_create_by_name(name_normalized)
-        @tag_following = current_user.tag_followings.create(:tag_id => @tag.id)
-      end
+  def index
+    respond_to do |format|
+      format.json{ render(:json => tags.to_json, :status => 200) }
     end
-    redirect_to multi_path
   end
 end

@@ -1,10 +1,21 @@
-#!/bin/bash
-if [ -e '.rvmrc_custom' ]; then
-  source .rvmrc_custom;
+#!/bin/sh
+
+rvm rvmrc warning ignore
+
+. ./script/env/ruby_env
+
+if [ -e '.rvmrc.local' ]; then
+  . ./.rvmrc.local;
+elif [ -e '.rvmrc_custom' ] ; then
+  . ./.rvmrc_custom;
 else
-  rvm --create use ree-1.8.7-2011.03@diaspora
+  if rvm list strings | grep -q "$ruby_version" ; then
+    rvm --create use "$ruby_version@$gemset"
+  else
+    printf "\e[00;31mPLEASE INSTALL RUBY $ruby_version WITH \`rvm install $ruby_version\`\n"
+    printf "Don't forget to run \`cd .. && cd -\` afterwards!\e[00m\n"
+    return 1
+  fi
 fi
 
-if [ "$(gem --version)" != "1.8.12" ]; then
-  rvm rubygems 1.8.12
-fi
+. ./script/env/ensure_right_rubygems

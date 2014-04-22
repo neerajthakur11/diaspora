@@ -6,25 +6,18 @@ class LikesController < ApplicationController
   include ApplicationHelper
   before_filter :authenticate_user!
 
-  respond_to :html, :mobile, :json
+  respond_to :html,
+             :mobile,
+             :json
 
   def create
-    positive = (params[:positive] == 'true') ? true : false
-    if target
-      @like = current_user.build_like(:positive => positive, :target => target)
+    @like = current_user.like!(target) if target rescue ActiveRecord::RecordInvalid
 
-      if @like.save
-        Rails.logger.info("event=create type=like user=#{current_user.diaspora_handle} status=success like=#{@like.id} positive=#{positive}")
-        Postzord::Dispatcher.build(current_user, @like).post
-
-        respond_to do |format|
-          format.js { render 'likes/update', :status => 201 }
-          format.html { render :nothing => true, :status => 201 }
-          format.mobile { redirect_to post_path(@like.post_id) }
-          format.json { render :json => {"id" => @like.id}, :status => 201 }
-        end
-      else
-        render :nothing => true, :status => 422
+    if @like
+      respond_to do |format|
+        format.html { render :nothing => true, :status => 201 }
+        format.mobile { redirect_to post_path(@like.post_id) }
+        format.json { render :json => @like.as_api_response(:backbone), :status => 201 }
       end
     else
       render :nothing => true, :status => 422
@@ -32,39 +25,34 @@ class LikesController < ApplicationController
   end
 
   def destroy
-    if @like = Like.where(:id => params[:id], :author_id => current_user.person.id).first
-      current_user.retract(@like)
-      respond_to do |format|
-        format.any { }
-        format.js { render 'likes/update' }
-        format.json { render :nothing => true, :status => :ok}
-      end
-    else
-      respond_to do |format|
-        format.mobile { redirect_to :back }
-        format.js { render :nothing => true, :status => 403 }
-        format.json { render :nothing => true, :status => 403}
-      end
+    @like = Like.find_by_id_and_author_id!(params[:id], current_user.person.id)
+
+    current_user.retract(@like)
+    respond_to do |format|
+      format.json { render :nothing => true, :status => 204 }
     end
   end
 
+  #I can go when the old stream goes.
   def index
-    if target
-      @likes = target.likes.includes(:author => :profile)
-      @people = @likes.map{|x| x.author}
-      render :layout => false
-    else
-      render :nothing => true, :status => 404
+    @likes = target.likes.includes(:author => :profile)
+    @people = @likes.map(&:author)
+
+    respond_to do |format|
+      format.all { render :layout => false }
+      format.json { render :json => @likes.as_api_response(:backbone) }
     end
   end
+
+  private
 
   def target
     @target ||= if params[:post_id]
-      current_user.find_visible_shareable_by_id(Post, params[:post_id])
+      current_user.find_visible_shareable_by_id(Post, params[:post_id]) || raise(ActiveRecord::RecordNotFound.new)
     else
-      comment = Comment.find(params[:comment_id])
-      comment = nil unless current_user.find_visible_shareable_by_id(Post, comment.commentable_id)
-      comment
+      Comment.find(params[:comment_id]).tap do |comment|
+       raise(ActiveRecord::RecordNotFound.new) unless current_user.find_visible_shareable_by_id(Post, comment.commentable_id)
+      end
     end
   end
 end

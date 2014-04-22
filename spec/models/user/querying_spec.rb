@@ -4,8 +4,7 @@
 
 require 'spec_helper'
 
-describe User do
-
+describe User::Querying do
   before do
     @alices_aspect = alice.aspects.where(:name => "generic").first
     @eves_aspect = eve.aspects.where(:name => "generic").first
@@ -67,7 +66,7 @@ describe User do
     it "does not contain duplicate posts" do
       bobs_other_aspect = bob.aspects.create(:name => "cat people")
       bob.add_contact_to_aspect(bob.contact_for(alice.person), bobs_other_aspect)
-      bob.aspects_with_person(alice.person).should =~ [@bobs_aspect, bobs_other_aspect]
+      expect(bob.aspects_with_person(alice.person)).to match_array [@bobs_aspect, bobs_other_aspect]
 
       bobs_post = bob.post(:status_message, :text => "hai to all my people", :to => [@bobs_aspect.id, bobs_other_aspect.id])
 
@@ -91,90 +90,6 @@ describe User do
         alice.visible_shareable_ids(Post).include?(@status.id).should be_false
       end
     end
-
-    context "RedisCache" do
-      before do
-        AppConfig[:redis_cache] = true
-        @opts = {:order => "created_at DESC", :order_field => "created_at", :all_aspects? => true}
-      end
-
-      after do
-        AppConfig[:redis_cache] = nil
-      end
-
-      it "populates the cache if the user has a mutual contact" do
-        RedisCache.any_instance.should_receive(:ensure_populated!)
-        alice.stub(:use_cache?).and_return(true)
-        alice.visible_shareable_ids(Post)
-      end
-
-      it 'does not get used if if all_aspects? option is not present' do
-        RedisCache.should_not_receive(:new)
-        alice.visible_shareable_ids(Post, @opts.merge({:all_aspects? => false}))
-      end
-
-      describe '#use_cache?' do
-        before do
-          cache = mock(:cache_exists? => true, :supported_order? => true, :ensure_populated! => mock, :post_ids => [])
-          RedisCache.stub(:new).and_return(cache)
-        end
-
-        it 'returns true if redis cache is set' do
-          AppConfig[:redis_cache] = true
-          alice.send(:use_cache?, @opts).should be_true
-        end
-
-        it 'returns false if redis cache is set' do
-          AppConfig[:redis_cache] = nil
-          alice.send(:use_cache?, @opts).should be_false
-        end
-      end
-
-      describe '#perform_db_query?' do
-        before do
-          @opts = {:limit => 15}
-        end
-
-        it 'returns true if cache is nil' do
-          alice.send(:perform_db_query?, [1,2,3], nil, @opts).should be_true
-        end
-
-        it 'returns true if cache shareable_ids is blank' do
-          cache = mock(:size => 100)
-          alice.send(:perform_db_query?, [], cache, @opts).should be_true
-        end
-
-        it 'returns true if cache shareable_ids length is less than opts[:limit]' do
-          cache = mock(:size => 100)
-          alice.send(:perform_db_query?, [1,2,3], cache, @opts).should be_true
-        end
-
-        it 'returns false if cache size is less than opts[:limit]' do
-          cache = mock(:size => 10)
-          alice.send(:perform_db_query?, [1,2,3], cache, @opts).should be_false
-        end
-      end
-
-      context 'populated cache' do
-        before do
-          @cache = mock(:cache_exists? => true, :size => 100, :ensure_populated! => mock)
-          RedisCache.stub(:new).and_return(@cache)
-        end
-
-        it "reads from the cache" do
-          @cache.should_receive(:post_ids).and_return([1,2,3])
-
-          alice.visible_shareable_ids(Post, @opts.merge({:limit => 3})).should == [1,2,3]
-        end
-
-        it "queries if maxtime is later than the last cached post" do
-          @cache.stub(:post_ids).and_return([])
-          alice.should_receive(:visible_ids_from_sql)
-
-          alice.visible_shareable_ids(Post, @opts)
-        end
-      end
-    end
   end
 
   describe "#prep_opts" do
@@ -182,7 +97,7 @@ describe User do
       time = Time.now
       Time.stub(:now).and_return(time)
       alice.send(:prep_opts, Post, {}).should == {
-        :type => Stream::Base::TYPES_OF_POST_IN_STREAM, 
+        :type => Stream::Base::TYPES_OF_POST_IN_STREAM,
         :order => 'created_at DESC',
         :limit => 15,
         :hidden => false,
@@ -195,12 +110,27 @@ describe User do
 
   describe "#visible_shareables" do
     it 'never contains posts from people not in your aspects' do
-      Factory(:status_message, :public => true)
+      FactoryGirl.create(:status_message, :public => true)
       bob.visible_shareables(Post).count.should == 0
     end
+
+    context 'with two posts with the same timestamp' do
+      before do
+        aspect_id = alice.aspects.where(:name => "generic").first.id
+        Timecop.freeze Time.now do
+          alice.post :status_message, :text => "first", :to => aspect_id
+          alice.post :status_message, :text => "second", :to => aspect_id
+        end
+      end
+
+      it "returns them in reverse creation order" do
+        bob.visible_shareables(Post).first.text.should == "second"
+        bob.visible_shareables(Post).last.text.should == "first"
+      end
+    end
+
     context 'with many posts' do
       before do
-        bob.move_contact(eve.person, @bobs_aspect, bob.aspects.create(:name => 'new aspect'))
         time_interval = 1000
         time_past = 1000000
         (1..25).each do |n|
@@ -229,7 +159,7 @@ describe User do
         # It should respect the order option
         opts = {:order => 'updated_at DESC'}
         bob.visible_shareables(Post, opts).first.updated_at.should > bob.visible_shareables(Post, opts).last.updated_at
-        
+
         # It should respect the limit option
         opts = {:limit => 40}
         bob.visible_shareables(Post, opts).length.should == 40
@@ -273,9 +203,9 @@ describe User do
       end
 
       it 'returns local/remote people objects for a users contact in each aspect' do
-        local_user1 = Factory(:user)
-        local_user2 = Factory(:user)
-        remote_user = Factory(:user)
+        local_user1 = FactoryGirl.create(:user)
+        local_user2 = FactoryGirl.create(:user)
+        remote_user = FactoryGirl.create(:user)
 
         asp1 = local_user1.aspects.create(:name => "lol")
         asp2 = local_user2.aspects.create(:name => "brb")
@@ -296,7 +226,7 @@ describe User do
       end
 
       it 'does not return people not connected to user on same pod' do
-        3.times { Factory(:user) }
+        3.times { FactoryGirl.create(:user) }
         alice.people_in_aspects([@alices_aspect]).count.should == 1
       end
 
@@ -311,9 +241,9 @@ describe User do
   end
 
   context 'contact querying' do
-    let(:person_one) { Factory.create :person }
-    let(:person_two) { Factory.create :person }
-    let(:person_three) { Factory.create :person }
+    let(:person_one) { FactoryGirl.create :person }
+    let(:person_two) { FactoryGirl.create :person }
+    let(:person_three) { FactoryGirl.create :person }
     let(:aspect) { alice.aspects.create(:name => 'heroes') }
 
     describe '#contact_for_person_id' do
@@ -379,7 +309,7 @@ describe User do
 
   describe '#posts_from' do
     before do
-      @user3 = Factory(:user)
+      @user3 = FactoryGirl.create(:user)
       @aspect3 = @user3.aspects.create(:name => "bros")
 
       @public_message = @user3.post(:status_message, :text => "hey there", :to => 'all', :public => true)

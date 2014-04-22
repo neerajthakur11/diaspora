@@ -10,7 +10,7 @@ class ProcessedImage < CarrierWave::Uploader::Base
   end
 
   def extension_white_list
-    %w(jpg jpeg png gif)
+    %w(jpg jpeg png gif tiff)
   end
 
   def filename
@@ -30,7 +30,7 @@ class ProcessedImage < CarrierWave::Uploader::Base
     process :strip
   end
   version :scaled_full do
-    process :resize_to_limit => [700,700]
+    process :resize_to_limit => [700,nil]
     process :strip
   end
 

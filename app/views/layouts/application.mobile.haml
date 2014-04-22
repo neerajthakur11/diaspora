@@ -1,23 +1,24 @@
--#   Copyright (c) 2010-2011, Diaspora Inc.  This file is
--#   licensed under the Affero General Public License version 3 or later.  See
--#   the COPYRIGHT file.
+-# Copyright (c) 2010-2011, Diaspora Inc. This file is
+-# licensed under the Affero General Public License version 3 or later. See
+-# the COPYRIGHT file.
 
 !!!
 %html{:lang => I18n.locale.to_s, :dir => (rtl?) ? 'rtl' : 'ltr'}
   %head
     %title
-      DIASPORA*
+      = pod_name
 
-    %meta{:name => "description", :content => "Diaspora* Mobile"}
-    %meta{:name => "author", :content => "Diaspora, Inc."}
+    %meta{:name => "description", :content => "diaspora* mobile"}/
+    %meta{:name => "author", :content => "Diaspora, Inc."}/
+    %meta{:charset => 'utf-8'}/
+    %meta{:property => "og:site_name", :content => "#{AppConfig.settings.pod_name}"}/
 
-    %meta{"http-equiv"=>"Content-Type", :content=>"text/html; charset=utf-8"}/
     / Viewport scale
-    %meta{:name =>'viewport', :content => "width=device-width, minimum-scale=1 maximum-scale=1"}
-    %meta{:name => "HandheldFriendly", :content => "True"}
-    %meta{:name => "MobileOptimized", :content => "320"}
+    %meta{:name =>'viewport', :content => "width=device-width, minimum-scale=1 maximum-scale=1"}/
+    %meta{:name => "HandheldFriendly", :content => "True"}/
+    %meta{:name => "MobileOptimized", :content => "320"}/
     / Force cleartype on WP7
-    %meta{'http-equiv' => "cleartype", :content => 'on'}
+    %meta{'http-equiv' => "cleartype", :content => 'on'}/
 
     / Home screen icon (sized for retina displays)
     %link{:rel => 'apple-touch-icon', :href => '/apple-touch-icon.png'}
@@ -29,56 +30,53 @@
     /%meta{:name => "apple-mobile-web-app-capable", :content => "yes"}
     /%link{:rel => "apple-touch-startup-image", :href => "/images/apple-splash.png"}
 
+    = chartbeat_head_block
+
     / Stylesheets
-    = include_stylesheets :mobile, :format => 'all'
+
+    = stylesheet_link_tag :mobile, :format => 'all'
     = yield(:custom_css)
 
-    %script{:src => "/javascripts/vendor/mbp-modernizr-custom.js"}
-    / Media Queries Polyfill https://github.com/shichuan/mobile-html5-boilerplate/wiki/Media-Queries-Polyfill
-    :javascript
-      Modernizr.mq('(min-width:0)') || document.write('<script src="javascripts/vendor/mbp-respond.min.js">\x3C/script>')
 
     = csrf_meta_tag
 
     - if rtl?
-      = include_stylesheets :rtl, :media => 'all'
+      = stylesheet_link_tag :rtl, :media => 'all'
 
     = yield(:head)
 
   %body
-    #main{:role => "main"}
-      = yield
+    %header    
+      = link_to(image_tag('branding/header-logo2x.png', height: 40, width: 40), stream_path, id: 'header_title')
 
-    %header
-      = link_to(image_tag('white@2x.png', :height => 20, :width => 127, :id => 'header_title'), multi_path)
       - if user_signed_in?
-        - if yield(:header_action).present?
-          = yield(:header_action)
-        - else
-          = link_to(image_tag('icons/compose_mobile2.png', :height => 28, :width => 28), new_status_message_path, :class => 'compose_icon')
+        #nav_badges
+          = link_to(image_tag('icons/my_activity.png', class: 'my_activity'), activity_stream_path, class: "badge badge-inverse", id: "my_activity_badge")
+          = link_to(image_tag('icons/notifications_grey.png', height: 16, width: 16, id: 'notification-flag'), notifications_path, class: "badge badge-inverse", id: "notification_badge")
+          - if current_user.unread_notifications.count > 0
+            .badge_count{id: "notification"}
+              = current_user.unread_notifications.count
+          = link_to(image_tag('icons/mail_grey.png', height: 11, width: 17), conversations_path, class: "badge badge-inverse", id: "conversations_badge")
+          - if current_user.unread_message_count > 0
+            .badge_count{id: "conversation"}
+              = current_user.unread_message_count
+          = link_to(image_tag('icons/search_grey.png', height: 14, width: 14), people_path, class: "badge badge-inverse", id: "people_badge")
+          = link_to(image_tag('icons/user_grey.png', height: 16, width: 16), contacts_path, class: "badge badge-inverse", id: "contacts_badge")
+          - if yield(:header_action).present?
+            = yield(:header_action)
+          - else
+            = link_to(image_tag('icons/compose_mobile2.png', class: 'compose_icon'), new_status_message_path)
+
+    #main.container{:role => "main"}
+      - if current_page?(:activity_stream)
+        %h3
+          = t('streams.activity.title')
+      = yield
 
     - if user_signed_in?
       = render :partial =>'shared/footer'
 
     / javascripts at the bottom
-    = include_javascripts :mobile
-
-    :javascript
-      MBP.hideUrlBar();
-
-    -if AppConfig[:google_a_site]
-      :javascript
-        var _gaq=[["_setAccount","#{AppConfig[:google_a_site]}"],["_trackPageview"]];
-        (function(d,t){var g=d.createElement(t),s=d.getElementsByTagName(t)[0];g.async=1;
-        g.src=("https:"==location.protocol?"//ssl":"//www")+".google-analytics.com/ga.js";
-        s.parentNode.insertBefore(g,s)}(document,"script"));
-
-    -if AppConfig[:piwik_id]
-      :javascript
-        var pkBaseURL = (("https:" == document.location.protocol) ? "https://#{AppConfig[:piwik_url]}/" : "http://#{AppConfig[:piwik_url]}/");
-        document.write(unescape("%3Cscript src='" + pkBaseURL + "piwik.js' type='text/javascript'%3E%3C/script%3E"));
-        try {
-        var piwikTracker = Piwik.getTracker(pkBaseURL + "piwik.php", #{AppConfig[:piwik_id]});
-        piwikTracker.trackPageView();
-        piwikTracker.enableLinkTracking();
-        } catch( err ) {}
+    = jquery_include_tag
+    = javascript_include_tag :mobile
+    = include_chartbeat

@@ -3,13 +3,13 @@
 -#   the COPYRIGHT file.
 
 - content_for :head do
-  = include_javascripts :photos
+  = javascript_include_tag :photos
 
 #author_info
   = person_image_link(post.author)
   .from
     %h2
-      = post.author.name
+      = post.author_name
 
 #show_photo{:data=>{:guid=>post.id}}
   = image_tag post.url(:scaled_full)

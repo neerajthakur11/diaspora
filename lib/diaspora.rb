@@ -3,8 +3,11 @@
 #   the COPYRIGHT file.
 
 module Diaspora
-
-  autoload :Parser
-  autoload :Webhooks
-
+  require 'diaspora/exceptions'
+  require 'diaspora/parser'
+  require 'diaspora/fetcher'
+  require 'diaspora/markdownify'
+  require 'diaspora/mentionable'
+  require 'diaspora/exporter'
+  require 'diaspora/federated'
 end

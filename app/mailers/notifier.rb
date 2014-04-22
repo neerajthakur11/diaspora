@@ -24,13 +24,34 @@ class Notifier < ActionMailer::Base
     end
 
     default_opts = {:to => @receiver.email,
-         :from => AppConfig[:smtp_sender_address],
-         :subject => I18n.t('notifier.single_admin.subject'),  :host => AppConfig[:pod_uri].host}
+         :from => AppConfig.mail.sender_address,
+         :subject => I18n.t('notifier.single_admin.subject'),  :host => AppConfig.pod_uri.host}
     default_opts.merge!(opts)
 
 
 
-    mail(default_opts)
+    mail(default_opts) do |format|
+      format.text
+      format.html
+    end
+  end
+
+  def invite(email, message, inviter, invitation_code, locale)
+    @inviter = inviter
+    @message = message
+    @locale = locale
+    @invitation_code = invitation_code
+
+    mail_opts = {:to => email, :from => AppConfig.mail.sender_address,
+                 :subject => I18n.t('notifier.invited_you', :name => @inviter.name),
+                 :host => AppConfig.pod_uri.host}
+
+    I18n.with_locale(locale) do
+      mail(mail_opts) do |format|
+        format.text { render :layout => nil }
+        format.html { render :layout => nil }
+      end
+    end
   end
 
   def started_sharing(recipient_id, sender_id)
@@ -70,7 +91,10 @@ class Notifier < ActionMailer::Base
     @notification = NotificationMailers.const_get(type.to_s.camelize).new(*args)
 
     with_recipient_locale do
-      mail(@notification.headers)
+      mail(@notification.headers) do |format|
+        format.text
+        format.html
+      end
     end
   end
 

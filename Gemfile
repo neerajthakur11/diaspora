@@ -1,153 +1,219 @@
-source 'http://rubygems.org'
+source 'https://rubygems.org'
 
-gem 'rails', '3.0.11'
+gem 'rails', '3.2.17'
 
-gem 'bundler', '>= 1.0.0'
-gem 'foreman'
-gem 'whenever'
+# Appserver
 
-gem 'thin', '~> 1.3.1', :require => false
+gem 'unicorn', '4.8.0', :require => false
 
-# authentication
+# API and JSON
 
-gem 'devise', '~> 1.3.1'
-gem 'devise_invitable', '0.5.0'
-gem 'jwt', "0.1.3"
-gem 'oauth2-provider', '0.0.19'
+gem 'acts_as_api', '0.4.2'
+gem 'json',        '1.8.1'
 
-gem 'omniauth', '1.0.1'
-gem 'omniauth-facebook'
-gem 'omniauth-tumblr'
-gem 'omniauth-twitter'
+# Authentication
 
-gem 'twitter', '2.0.2'
+gem 'devise', '3.2.2'
 
-# backups
-gem 'cloudfiles', '1.4.10', :require => false
+# Captcha
 
-# mail
-gem 'messagebus_ruby_api', '1.0.1'
+gem 'galetahub-simple_captcha', '0.1.5', :require => 'simple_captcha'
+
+# Background processing
+
+gem 'sidekiq', '2.17.2'
+gem 'sinatra', '1.3.3'
+
+# Configuration
+
+gem 'configurate', '0.0.8'
+
+# Cross-origin resource sharing
+
+gem 'rack-cors', '0.2.8', :require => 'rack/cors'
+
+# Database
+
+ENV['DB'] ||= 'mysql'
+
+gem 'mysql2', '0.3.14' if ENV['DB'] == 'all' || ENV['DB'] == 'mysql'
+gem 'pg',     '0.17.1' if ENV['DB'] == 'all' || ENV['DB'] == 'postgres'
+
+gem 'activerecord-import', '0.3.1'
+gem 'foreigner',           '1.6.1'
+
+# File uploading
+
+gem 'carrierwave', '0.9.0'
+gem 'fog',         '1.19.0'
+gem 'mini_magick', '3.7.0'
+gem 'remotipart',  '1.2.1'
+
+# Localization
+
+gem 'http_accept_language', '1.0.2'
+gem 'i18n-inflector-rails', '1.0.7'
+gem 'rails-i18n',           '0.7.4'
+
+# Mail
+
+gem 'markerb',             '1.0.1'
+gem 'messagebus_ruby_api', '1.0.3'
+
+# Parsing
+
+gem 'nokogiri',         '1.6.1'
+gem 'rails_autolink',   '1.1.5'
+gem 'redcarpet',        '3.0.0'
+gem 'roxml',            '3.1.6'
+gem 'ruby-oembed',      '0.8.9'
+gem 'opengraph_parser', '0.2.3'
 
 
-# web sockets
-gem 'em-synchrony', :platforms => :ruby_19
-gem 'em-websocket'
+# Please remove when migrating to Rails 4
+gem 'strong_parameters'
 
-group :production do # we don't install these on travis to speed up test runs
-  # chef
-  gem 'chef', '~> 0.10.4', :require => false
-  gem 'ohai', '~> 0.6.10', :require => false
 
-  # reporting
-  gem 'hoptoad_notifier'
-  gem 'newrelic_rpm', :require => false
-end
+# Services
 
-# configuration
+gem 'omniauth',          '1.1.4'
+gem 'omniauth-facebook', '1.6.0'
+gem 'omniauth-tumblr',   '1.1'
+gem 'omniauth-twitter',  '1.0.1'
+gem 'twitter',           '4.8.1'
+gem 'omniauth-wordpress','0.2.0'
 
-gem 'settingslogic', '2.0.6'
+# Tags
 
-# database
-
-gem 'activerecord-import'
-gem 'foreigner', '~> 1.1.0'
-gem 'mysql2', '0.2.17' if ENV['DB'].nil? || ENV['DB'] == 'all' || ENV['DB'] == 'mysql'
-gem 'pg' if ENV['DB'] == 'all' || ENV['DB'] == 'postgres'
-gem 'sqlite3' if ENV['DB'] == 'all' || ENV['DB'] == 'sqlite'
-
-# file uploading
-
-gem 'carrierwave', '0.5.8'
-gem 'fog'
-gem 'fastercsv', '1.5.4', :require => false
-gem 'mini_magick', '3.3'
-gem 'rest-client', '1.6.1'
-
-gem 'jammit', '0.6.5'
-
-# JSON and API
-
-gem 'json', '1.5.2'
-gem 'vanna', :git => 'git://github.com/MikeSofaer/vanna.git'
-
-# localization
-
-gem 'i18n-inflector-rails', '~> 1.0'
-gem 'rails-i18n'
-
-# parsing
-
-gem 'nokogiri', '~> 1.5.0'
-gem 'redcarpet', "2.0.0"
-gem 'roxml', :git => 'git://github.com/Empact/roxml.git', :ref => '7ea9a9ffd2338aaef5b0'
-gem 'ruby-oembed'
-
-# queue
-
-gem 'resque', '1.19.0'
-gem 'resque-ensure-connected'
-gem 'resque-timeout', '1.0.0'
-gem 'SystemTimer', '1.2.3', :platforms => :ruby_18
-
-# tags
-
-gem 'acts-as-taggable-on', :git => 'git://github.com/diaspora/acts-as-taggable-on.git'
+gem 'acts-as-taggable-on', '2.4.1'
 
 # URIs and HTTP
 
-gem 'addressable', '2.2.4', :require => 'addressable/uri'
-gem 'http_accept_language', :git => 'git://github.com/iain/http_accept_language.git', :ref => '0b78aa7849fc90cf9e12'
-gem 'typhoeus'
+gem 'addressable',        '2.3.5', :require => 'addressable/uri'
+gem 'faraday',            '0.8.9'
+gem 'faraday_middleware', '0.9.0'
+gem 'typhoeus',           '0.6.7'
 
-# views
+# Views
 
-gem 'haml', '3.1.4'
-gem 'mobile-fu'
-gem 'sass', '3.1.11'
-gem 'will_paginate', '3.0.2'
-gem 'client_side_validations'
+gem 'client_side_validations', '3.2.6'
+gem 'gon',                     '4.1.1'
+gem 'haml',                    '4.0.5'
+gem 'mobile-fu',               '1.2.2'
+gem 'will_paginate',           '3.0.5'
 
-# web
-
-gem 'faraday'
-gem 'faraday-stack'
-
-# jazzy jasmine
-
-gem 'jasmine', '~> 1.1.2'
+# Workarounds
+# https://github.com/rubyzip/rubyzip#important-note
+gem 'zip-zip'
 
 ### GROUPS ####
 
-group :test do
-  gem 'capybara', '~> 1.1.2'
-  gem 'cucumber-rails', '1.2.1'
-  gem 'cucumber-api-steps', '0.6', :require => false
-  gem 'database_cleaner', '0.7.0'
-  gem 'diaspora-client', :git => 'git://github.com/diaspora/diaspora-client.git'
-                          #"0.1.0", #:path => '~/workspace/diaspora-client'
-  gem 'factory_girl_rails'
-  gem 'fixture_builder', '0.3.1'
-  gem 'fuubar', '0.0.6'
-  gem 'mongrel', :require => false, :platforms => :ruby_18
-  gem 'rspec', '>= 2.0.0'
-  gem 'rspec-core', '~> 2.7.1'
-  gem 'rspec-instafail', '>= 0.1.7', :require => false
-  gem 'rspec-rails', '>= 2.0.0'
-  gem 'selenium-webdriver', '~> 2.15.0'
-  gem 'webmock', :require => false
-  gem 'sqlite3'
-  gem 'mock_redis'
+group :assets do
+
+  # Icons
+  gem 'entypo-rails'
+
+  # CSS
+
+  gem 'bootstrap-sass', '2.2.2.0'
+  gem 'compass-rails',  '1.0.3'
+  gem 'sass-rails',     '3.2.6'
+
+  # Compression
+
+  gem 'uglifier', '2.1.2'
+
+  # JavaScript
+
+  gem 'backbone-on-rails', '1.1.0'
+  gem 'handlebars_assets', '0.12.0'
+  gem 'jquery-rails',      '2.1.4'
+
+  # Windows and OSX have an execjs compatible runtime built-in, Linux users should
+  # install Node.js or use 'therubyracer'.
+  #
+  # See https://github.com/sstephenson/execjs#readme for more supported runtimes
+
+  # gem 'therubyracer', :platform => :ruby
+end
+
+group :production do # we don't install these on travis to speed up test runs
+
+  # Administration
+
+  gem 'rails_admin', '0.4.9'
+
+  # Analytics
+
+  gem 'rack-google-analytics', '0.14.0', :require => 'rack/google-analytics'
+  gem 'rack-piwik',            '0.2.2',  :require => 'rack/piwik'
+
+  # Click-jacking protection
+
+  gem 'rack-protection', '1.2'
+
+  # Process management
+
+  gem 'foreman', '0.62'
+
+  # Redirects
+
+  gem 'rack-rewrite', '1.5.0', :require => false
+  gem 'rack-ssl',     '1.3.3', :require => 'rack/ssl'
+
+  # Third party asset hosting
+
+  gem 'asset_sync', '1.0.0', :require => false
 end
 
 group :development do
-  gem 'capistrano', '~> 2.9.0', :require => false
-  gem 'capistrano_colors', :require => false
-  gem 'capistrano-ext', '1.2.1', :require => false
-  gem 'linecache', '0.46', :platforms => :mri_18
-  gem 'parallel_tests'
-  gem 'ruby-debug-base19', '0.11.23' if RUBY_VERSION.include? '1.9.1'
-  gem 'ruby-debug19', :platforms => :ruby_19
-  gem 'ruby-debug', :platforms => :mri_18
-  gem 'sod', :git => 'git://github.com/MikeSofaer/sod.git', :require => false
-  gem 'yard'
+  # Comparison images
+
+  gem 'rmagick', '2.13.2', :require => false
+
+  # Automatic test runs
+
+  gem 'guard-cucumber', '1.4.1'
+  gem 'guard-rspec',    '4.2.4'
+  gem 'rb-fsevent',     '0.9.4', :require => false
+  gem 'rb-inotify',     '0.9.3', :require => false
+
+  # Preloading environment
+
+  gem 'guard-spork', '1.5.1'
+  gem 'spork',       '1.0.0rc4'
+end
+
+group :test do
+  # RSpec (unit tests, some integration tests)
+
+  gem 'fixture_builder',   '0.3.6'
+  gem 'fuubar',            '1.3.2'
+  gem 'rspec-instafail',   '0.2.4', :require => false
+  gem 'test_after_commit', '0.2.2'
+
+  # Cucumber (integration tests)
+
+  gem 'capybara',           '2.2.1'
+  gem 'database_cleaner',   '1.2.0'
+  gem 'selenium-webdriver', '2.39.0'
+
+  # General helpers
+
+  gem 'factory_girl_rails', '4.3.0'
+  gem 'timecop',            '0.7.1'
+  gem 'webmock',            '1.16.1', :require => false
+end
+
+
+group :development, :test do
+  # RSpec (unit tests, some integration tests)
+  gem "rspec-rails",     '2.14.1'
+
+  # Cucumber (integration tests)
+  gem 'cucumber-rails',     '1.4.0', :require => false
+
+  # Jasmine (client side application tests (JS))
+  gem 'jasmine', '1.3.2'
+  gem 'sinon-rails',	    '1.7.3'
 end

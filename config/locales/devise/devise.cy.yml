@@ -1,4 +1,4 @@
-#   Copyright (c) 2010-2011, Diaspora Inc.  This file is
+#   Copyright (c) 2010-2013, Diaspora Inc.  This file is
 #   licensed under the Affero General Public License version 3 or later.  See
 #   the COPYRIGHT file.
 
@@ -26,9 +26,6 @@ cy:
       confirmation_instructions:
         subject: "Cyfarwyddiadau Cadarnhad"
       hello: "Helo %{email}!"
-      invitation_instructions:
-        displaying_correctly: "Email not displaying correctly? %{link} in your browser"
-        view_in: "View in"
       reset_password_instructions:
         change: "Newid y cyfrinair"
       unlock_instructions:
@@ -49,18 +46,18 @@ cy:
       updated: "Diweddarwyd eich cyfrif yn llwyddiannus."
     sessions:
       new:
-        login: Mewngofnodi
-        password: Cyfrinair
+        login: "Mewngofnodi"
+        password: "Cyfrinair"
         remember_me: "Cofiwch mi"
-        sign_in: Mewngofnodi
+        sign_in: "Mewngofnodi"
         username: "Enw Defnyddiwr"
       signed_in: "Arwyddwyd i fewn yn llwyddiannus."
       signed_out: "Arwyddwyd allan yn llwyddiannus."
     shared:
       links:
         forgot_your_password: "Wedi anghofio eich cyfrinair?"
-        sign_in: Mewngofnodi
-        sign_up: Cofrestrwch
+        sign_in: "Mewngofnodi"
+        sign_up: "Cofrestrwch"
     unlocks:
       send_instructions: "Byddwch yn derbyn e-bost gyda cyfarwyddiadau ar sut i agor eich cyfrif mewn ychydig funudau."
       unlocked: "Datglowyd eich cyfrif yn llwyddiannus. Rydych chi wedi arwyddo i fewn."

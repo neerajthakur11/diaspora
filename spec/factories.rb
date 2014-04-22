@@ -1,5 +1,5 @@
-#   Copyright (c) 2010-2011, Diaspora Inc.  This file is
-#   licensed under the Affero General Public License version 3 or later.  See
+#   Copyright (c) 2010-2011, Diaspora In  This file is
+#   licensed under the Affero General Public License version 3 or late  See
 #   the COPYRIGHT file.
 
 #For Guidance
@@ -7,197 +7,248 @@
 # http://railscasts.com/episodes/158-factories-not-fixtures
 
 def r_str
-  ActiveSupport::SecureRandom.hex(3)
+  SecureRandom.hex(3)
 end
 
-Factory.define :profile do |p|
-  p.sequence(:first_name) { |n| "Robert#{n}#{r_str}" }
-  p.sequence(:last_name)  { |n| "Grimm#{n}#{r_str}" }
-  p.bio "I am a cat lover and I love to run"
-  p.gender "robot"
-  p.location "Earth"
-  p.birthday Date.today
-end
-
-Factory.define :profile_with_image_url, :parent => :profile do |p|
-  p.image_url "http://example.com/image.jpg"
-  p.image_url_medium "http://example.com/image_mid.jpg"
-  p.image_url_small "http://example.com/image_small.jpg"
-end
-
-Factory.define :person do |p|
-  p.sequence(:diaspora_handle) { |n| "bob-person-#{n}#{r_str}@example.net" }
-  p.sequence(:url)  { |n| AppConfig[:pod_url] }
-  p.serialized_public_key OpenSSL::PKey::RSA.generate(1024).public_key.export
-  p.after_build do |person|
-    person.profile = Factory.build(:profile, :person => person) unless person.profile.first_name.present?
+FactoryGirl.define do
+  factory :profile do
+    sequence(:first_name) { |n| "Robert#{n}#{r_str}" }
+    sequence(:last_name)  { |n| "Grimm#{n}#{r_str}" }
+    bio "I am a cat lover and I love to run"
+    gender "robot"
+    location "Earth"
+    birthday Date.today
   end
-  p.after_create do |person|
-    person.profile.save
+
+  factory :profile_with_image_url, :parent => :profile do
+    image_url "http://example.com/image.jpg"
+    image_url_medium "http://example.com/image_mid.jpg"
+    image_url_small "http://example.com/image_small.jpg"
   end
-end
 
-Factory.define :account_deletion do |d|
-  d.association :person
-  d.after_build do |delete|
-    delete.diaspora_handle= delete.person.diaspora_handle
+  factory :person do
+    sequence(:diaspora_handle) { |n| "bob-person-#{n}#{r_str}@example.net" }
+    url AppConfig.pod_uri.to_s
+    serialized_public_key OpenSSL::PKey::RSA.generate(1024).public_key.export
+    after(:build) do |person|
+      person.profile = FactoryGirl.build(:profile, :person => person) unless person.profile.first_name.present?
+    end
+    after(:create) do |person|
+      person.profile.save
+    end
   end
-end
 
-Factory.define :searchable_person, :parent => :person do |p|
-  p.after_build do |person|
-    person.profile = Factory.build(:profile, :person => person, :searchable => true)
+  factory :account_deletion do
+    association :person
+    after(:build) do |delete|
+      delete.diaspora_handle = delete.person.diaspora_handle
+    end
   end
-end
 
-Factory.define :like do |x|
-  x.association :author, :factory => :person
-  x.association :target, :factory => :status_message
-end
-
-Factory.define :user do |u|
-  u.getting_started false
-  u.sequence(:username) { |n| "bob#{n}#{r_str}" }
-  u.sequence(:email) { |n| "bob#{n}#{r_str}@pivotallabs.com" }
-  u.password "bluepin7"
-  u.password_confirmation { |u| u.password }
-  u.serialized_private_key  OpenSSL::PKey::RSA.generate(1024).export
-  u.after_build do |user|
-    user.person = Factory.build(:person, :profile => Factory.build(:profile),
-                                :owner_id => user.id,
-                                :serialized_public_key => user.encryption_key.public_key.export,
-                                :diaspora_handle => "#{user.username}@#{AppConfig[:pod_url].gsub(/(https?:|www\.)\/\//, '').chop!}")
+  factory :searchable_person, :parent => :person do
+    after(:build) do |person|
+      person.profile = FactoryGirl.build(:profile, :person => person, :searchable => true)
+    end
   end
-  u.after_create do |user|
-    user.person.save
-    user.person.profile.save
+
+  factory :like do
+    association :author, :factory => :person
+    association :target, :factory => :status_message
   end
-end
 
-Factory.define :user_with_aspect, :parent => :user do |u|
-  u.after_create { |user| Factory(:aspect, :user => user) }
-end
-
-Factory.define :aspect do |aspect|
-  aspect.name "generic"
-  aspect.association :user
-end
-
-Factory.define(:status_message) do |m|
-  m.sequence(:text) { |n| "jimmy's #{n} whales" }
-  m.association :author, :factory => :person
-  m.after_build do|m|
-    m.diaspora_handle = m.author.diaspora_handle
+  factory :user do
+    getting_started false
+    sequence(:username) { |n| "bob#{n}#{r_str}" }
+    sequence(:email) { |n| "bob#{n}#{r_str}@pivotallabs.com" }
+    password "bluepin7"
+    password_confirmation { |u| u.password }
+    serialized_private_key  OpenSSL::PKey::RSA.generate(1024).export
+    after(:build) do |u|
+      u.person = FactoryGirl.build(:person, :profile => FactoryGirl.build(:profile),
+                                  :owner_id => u.id,
+                                  :serialized_public_key => u.encryption_key.public_key.export,
+                                  :diaspora_handle => "#{u.username}#{User.diaspora_id_host}")
+    end
+    after(:create) do |u|
+      u.person.save
+      u.person.profile.save
+    end
   end
-end
 
-Factory.define(:status_message_with_photo, :parent => :status_message) do |m|
-  m.sequence(:text) { |n| "There are #{n} ninjas in this photo." }
-  m.after_build do |m|
-    p = Factory(:photo, :author => m.author, :status_message => m, :pending => false, :public => m.public)
+  factory :user_with_aspect, :parent => :user do
+    after(:create) { |u|  FactoryGirl.create(:aspect, :user => u) }
   end
-end
 
-Factory.define(:photo) do |p|
-  p.sequence(:random_string) {|n| ActiveSupport::SecureRandom.hex(10) }
-  p.after_build do |p|
-    p.unprocessed_image.store! File.open(File.join(File.dirname(__FILE__), 'fixtures', 'button.png'))
-    p.update_remote_path
+  factory :aspect do
+    name "generic"
+    user
   end
-end
 
-Factory.define :reshare do |r|
-  r.association(:root, :public => true, :factory => :status_message)
-  r.association(:author, :factory => :person)
-end
-
-Factory.define :invitation do |i|
-  i.service "email"
-  i.identifier "bob.smith@smith.com"
-  i.association :sender, :factory => :user_with_aspect
-  i.after_build do |i|
-    i.aspect = i.sender.aspects.first
+  factory(:status_message) do
+    sequence(:text) { |n| "jimmy's #{n} whales" }
+    association :author, :factory => :person
+    after(:build) do |sm|
+      sm.diaspora_handle = sm.author.diaspora_handle
+    end
   end
-end
 
-Factory.define :service do |service|
-  service.nickname "sirrobertking"
-  service.type "Services::Twitter"
-
-  service.sequence(:uid)           { |token| "00000#{token}" }
-  service.sequence(:access_token)  { |token| "12345#{token}" }
-  service.sequence(:access_secret) { |token| "98765#{token}" }
-end
-
-Factory.define :service_user do |s_user|
-  s_user.sequence(:uid) { |id| "a#{id}"}
-  s_user.sequence(:name) { |num| "Rob Fergus the #{num.ordinalize}" }
-  s_user.association :service
-  s_user.photo_url "/images/user/adams.jpg"
-end
-
-Factory.define(:comment) do |comment|
-  comment.sequence(:text) {|n| "#{n} cats"}
-  comment.association(:author, :factory => :person)
-  comment.association(:post, :factory => :status_message)
-end
-
-Factory.define(:notification) do |n|
-  n.association :recipient, :factory => :user
-  n.association :target, :factory => :comment
-  n.type 'Notifications::AlsoCommented'
-
-  n.after_build do |note|
-    note.actors << Factory.build( :person )
+  factory(:status_message_with_photo, :parent => :status_message) do
+    sequence(:text) { |n| "There are #{n} ninjas in this photo." }
+    after(:build) do |sm|
+      FactoryGirl.create(:photo, :author => sm.author, :status_message => sm, :pending => false, :public => sm.public)
+    end
   end
-end
 
-Factory.define(:activity_streams_photo, :class => ActivityStreams::Photo) do |p|
-  p.association(:author, :factory => :person)
-  p.image_url "#{AppConfig[:pod_url]}/images/asterisk.png"
-  p.image_height 154
-  p.image_width 154
-  p.object_url "http://example.com/awesome_things.gif"
-  p.objectId "http://example.com/awesome_things.gif"
-  p.actor_url "http://notcubbi.es/cubber"
-  p.provider_display_name "not cubbies"
-  p.public true
-end
+  factory(:status_message_in_aspect, parent: :status_message) do
+    self.public false
+    after :build do |sm|
+      sm.author = FactoryGirl.create(:user_with_aspect).person
+      sm.aspects << sm.author.owner.aspects.first
+    end
+  end
 
-Factory.define(:app, :class => OAuth2::Provider.client_class) do |a|
-  a.sequence(:name) { |token| "Chubbies#{token}" }
-  a.sequence(:application_base_url) { |token| "http://chubbi#{token}.es/" }
+  factory(:photo) do
+    sequence(:random_string) {|n| SecureRandom.hex(10) }
+    association :author, :factory => :person
+    after(:build) do |p|
+      p.unprocessed_image.store! File.open(File.join(File.dirname(__FILE__), 'fixtures', 'button.png'))
+      p.update_remote_path
+    end
+  end
 
-  a.description "The best way to chub on the net."
-  a.icon_url "/images/chubbies48.png"
-  a.permissions_overview "I will use the permissions this way!"
-  a.sequence(:public_key) {|n| OpenSSL::PKey::RSA.new(2048) }
-end
+  factory(:remote_photo, :parent => :photo) do
+    remote_photo_path 'https://photo.com/images/'
+    remote_photo_name 'kittehs.jpg'
+    association :author,:factory => :person
+    processed_image nil
+    unprocessed_image nil
+  end
 
-Factory.define(:oauth_authorization, :class => OAuth2::Provider.authorization_class) do |a|
-  a.association(:client, :factory => :app)
-  a.association(:resource_owner, :factory => :user)
-end
+  factory :reshare do
+    association(:root, :public => true, :factory => :status_message)
+    association(:author, :factory => :person)
+  end
 
-Factory.define(:oauth_access_token, :class => OAuth2::Provider.access_token_class) do |a|
-  a.association(:authorization, :factory => :oauth_authorization)
-end
+  factory :invitation do
+    service "email"
+    identifier "bob.smith@smith.com"
+    association :sender, :factory => :user_with_aspect
+    after(:build) do |i|
+      i.aspect = i.sender.aspects.first
+    end
+  end
 
-Factory.define(:tag, :class => ActsAsTaggableOn::Tag) do |t|
-  t.name "partytimeexcellent"
-end
+  factory :invitation_code do
+    sequence(:token){|n| "sdfsdsf#{n}"}
+    association :user
+    count 0
+  end
 
-Factory.define(:tag_following) do |a|
-  a.association(:tag, :factory => :tag)
-  a.association(:user, :factory => :user)
-end
+  factory :service do |service|
+    nickname "sirrobertking"
+    type "Services::Twitter"
 
-Factory.define(:contact) do |c|
-  c.association(:person, :factory => :person)
-  c.association(:user, :factory => :user)
-end
+    sequence(:uid)           { |token| "00000#{token}" }
+    sequence(:access_token)  { |token| "12345#{token}" }
+    sequence(:access_secret) { |token| "98765#{token}" }
+  end
 
-Factory.define(:mention) do |c|
-  c.association(:person, :factory => :person)
-  c.association(:post, :factory => :status_message)
+  factory :service_user do
+    sequence(:uid) { |id| "a#{id}"}
+    sequence(:name) { |num| "Rob Fergus the #{num.ordinalize}" }
+    association :service
+    photo_url "/assets/user/adams.jpg"
+  end
+
+  factory(:comment) do
+    sequence(:text) {|n| "#{n} cats"}
+    association(:author, :factory => :person)
+    association(:post, :factory => :status_message)
+  end
+
+  factory(:notification) do
+    association :recipient, :factory => :user
+    association :target, :factory => :comment
+    type 'Notifications::AlsoCommented'
+
+    after(:build) do |note|
+      note.actors << FactoryGirl.build(:person)
+    end
+  end
+
+  factory(:tag, :class => ActsAsTaggableOn::Tag) do
+    name "partytimeexcellent"
+  end
+
+  factory(:o_embed_cache) do
+    url "http://youtube.com/kittens"
+    data {{'data' => 'foo'}}
+  end
+
+  factory(:open_graph_cache) do
+    url "http://example.com/articles/123"
+    image "http://example.com/images/123.jpg"
+    title "Some article"
+    ob_type "article"
+    description "This is the article lead"
+  end
+
+  factory(:tag_following) do
+    association(:tag, :factory => :tag)
+    association(:user, :factory => :user)
+  end
+
+  factory(:contact) do
+    association(:person, :factory => :person)
+    association(:user, :factory => :user)
+  end
+
+  factory(:mention) do
+    association(:person, :factory => :person)
+    association(:post, :factory => :status_message)
+  end
+
+  factory(:conversation) do
+    association(:author, factory: :person)
+    sequence(:subject) { |n| "conversation ##{n}" }
+
+    after(:build) do |c|
+      c.participants << c.author
+    end
+  end
+
+  factory(:conversation_with_message, parent: :conversation) do
+    after(:build) do |c|
+      msg = FactoryGirl.build(:message)
+      msg.conversation_id = c.id
+      c.participants << msg.author
+      msg.save
+    end
+  end
+
+  factory(:message) do
+    association(:author, factory: :person)
+    sequence(:text) { |n| "message text ##{n}" }
+  end
+
+  factory(:message_with_conversation, parent: :message) do
+    after(:build) do |msg|
+      c = FactoryGirl.build(:conversation)
+      c.participants << msg.author
+      msg.conversation_id = c.id
+    end
+  end
+
+  #templates
+  factory(:status_with_photo_backdrop, :parent => :status_message_with_photo)
+
+  factory(:photo_backdrop, :parent => :status_message_with_photo) do
+    text ""
+  end
+
+  factory(:note, :parent => :status_message) do
+    text SecureRandom.hex(1000)
+  end
+
+  factory(:status, :parent => :status_message)
 end

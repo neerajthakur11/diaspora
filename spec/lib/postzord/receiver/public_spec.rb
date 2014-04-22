@@ -4,21 +4,22 @@
 
 require 'spec_helper'
 
-require File.join(Rails.root, 'lib/postzord')
-require File.join(Rails.root, 'lib/postzord/receiver/public')
-
 describe Postzord::Receiver::Public do
   before do
-    @post = Factory.build(:status_message, :author => alice.person, :public => true)
+    @post = FactoryGirl.build(:status_message, :author => alice.person, :public => true)
     @created_salmon = Salmon::Slap.create_by_user_and_activity(alice, @post.to_diaspora_xml)
     @xml = @created_salmon.xml_for(nil)
   end
 
   context 'round trips works with' do
     it 'a comment' do
-      comment = bob.build_comment(:text => 'yo', :post => Factory(:status_message))
+      sm = FactoryGirl.create(:status_message, :author => alice.person)
+
+      comment = bob.build_comment(:text => 'yo', :post => sm)
       comment.save
+      #bob signs his comment, and then sends it up
       xml = Salmon::Slap.create_by_user_and_activity(bob, comment.to_diaspora_xml).xml_for(nil)
+      bob.destroy
       comment.destroy
       expect{
         receiver = Postzord::Receiver::Public.new(xml) 
@@ -60,13 +61,13 @@ describe Postzord::Receiver::Public do
         @receiver.perform!
       end
 
-      it 'enqueues a Jobs::ReceiveLocalBatch' do 
-        Resque.should_receive(:enqueue).with(Jobs::ReceiveLocalBatch, anything, anything, anything)
+      it 'enqueues a Workers::ReceiveLocalBatch' do 
+        Workers::ReceiveLocalBatch.should_receive(:perform_async).with(anything, anything, anything)
         @receiver.perform!
       end
 
       it 'intergrates' do
-        fantasy_resque do
+        inlined_jobs do
           @receiver.perform!
         end
       end
@@ -83,7 +84,7 @@ describe Postzord::Receiver::Public do
 
   describe '#recipient_user_ids' do
     it 'calls User.all_sharing_with_person' do
-      User.should_receive(:all_sharing_with_person).and_return(stub(:select => []))
+      User.should_receive(:all_sharing_with_person).and_return(double(:select => []))
       receiver = Postzord::Receiver::Public.new(@xml)
       receiver.perform!
     end
@@ -91,7 +92,7 @@ describe Postzord::Receiver::Public do
 
   describe '#receive_relayable' do 
     before do
-      @comment = bob.build_comment(:text => 'yo', :post => Factory(:status_message))
+      @comment = bob.build_comment(:text => 'yo', :post => FactoryGirl.create(:status_message))
       @comment.save
       created_salmon = Salmon::Slap.create_by_user_and_activity(alice, @comment.to_diaspora_xml)
       xml = created_salmon.xml_for(nil)
@@ -100,7 +101,7 @@ describe Postzord::Receiver::Public do
     end
 
     it 'receives only for the parent author if he is local to the pod' do
-      comment = stub.as_null_object
+      comment = double.as_null_object
       @receiver.instance_variable_set(:@object, comment)
 
       comment.should_receive(:receive)
@@ -108,10 +109,10 @@ describe Postzord::Receiver::Public do
     end
 
     it 'calls notifiy_users' do
-      comment = stub.as_null_object
+      comment = double.as_null_object
       @receiver.instance_variable_set(:@object, comment)
 
-      local_batch_receiver = stub.as_null_object
+      local_batch_receiver = double.as_null_object
       Postzord::Receiver::LocalBatch.stub(:new).and_return(local_batch_receiver)
       local_batch_receiver.should_receive(:notify_users)
       @receiver.receive_relayable

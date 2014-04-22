@@ -4,19 +4,35 @@
 
 namespace :db do
   desc "rebuild and prepare test db"
-  task :rebuild => [:drop, :drop_integration, :create, :migrate, :seed, 'db:test:prepare']
+  task :rebuild  do
+    Rake::Task['db:drop'].invoke
+    Rake::Task['db:drop_integration'].invoke
+    Rake::Task['db:create'].invoke
+    Rake::Task['db:migrate'].invoke
+    puts "seeding users, this will take awhile"
+    `rake db:seed` #ghetto hax as we have active record garbage in our models
+    puts "seeded!"
+    Rake::Task['db:test:prepare'].invoke
+  end
 
   namespace :integration do
     # desc 'Check for pending migrations and load the integration schema'
     task :prepare => :environment do
       abcs = ActiveRecord::Base.configurations
       envs = abcs.keys.select{ |k| k.include?("integration") }
-      envs.each do |env|
-        ActiveRecord::Base.establish_connection(env)
-        ActiveRecord::Base.connection.drop_database(abcs[env]["database"])
-        ActiveRecord::Base.connection.create_database(abcs[env]["database"])
-        ActiveRecord::Base.establish_connection(env)
-        ActiveRecord::Migrator.migrate("db/migrate", nil)
+      puts envs.inspect
+      envs.each_with_index do |env, i|
+        Rails.env = env
+        Rake::Task.tasks.each{ |task| task.reenable }
+
+        print "\n\n## preparing database for #{env}... "
+        puts (i == 0) ? "(go get yourself a coffee)" : "(time for another coffee)"
+
+        # do drop, schema:load_if_ruby, structure:load_if_sql, seed
+        Rake::Task['db:drop'].invoke
+        Rake::Task['db:setup'].invoke
+
+        puts "db #{ActiveRecord::Base.connection.current_database} done"
       end
     end
   end
@@ -54,7 +70,7 @@ namespace :db do
     require File.join(File.dirname(__FILE__), '..', '..', 'config', 'environment')
     Person.where(:url => 'example.org').all.each{|person|
       if person.owner
-        person.url = AppConfig[:pod_url]
+        person.url = AppConfig.pod_uri.to_s
         person.diaspora_handle = person.owner.diaspora_handle
         person.save
       end

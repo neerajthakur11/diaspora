@@ -1,9 +1,6 @@
 
 require 'spec_helper'
 
-#NOTE;why is it not auto loadeded?
-require File.join(Rails.root, 'lib', 'publisher')
-
 describe Publisher do
   before do
     @publisher = Publisher.new(alice)

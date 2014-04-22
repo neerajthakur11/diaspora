@@ -3,9 +3,15 @@
 -#   the COPYRIGHT file.
 
 .stream_element{:data=>{:guid=>post.id}}
-
+  - if post.respond_to?(:nsfw) && post.nsfw
+    .shield_wrapper
+      .shield
+        %strong #NSFW 
+        | 
+        = link_to t('javascripts.stream.show_nsfw_post'), '#'
+  
   - if post.is_a?(Reshare)
-    = render 'reshares/reshare', :reshare => post, :post => post.root
+    = render 'reshares/reshare', :reshare => post, :post => post.absolute_root
 
   = render 'shared/photo_area', :post => post
 
@@ -37,8 +43,9 @@
             = post.likes.size
 
         %ul.comments
-          = render :partial => 'comments/comment', :collection => post.comments, :locals => {:post => post}
+          = render :partial => 'comments/comment', :collection => post.comments.order('created_at ASC')
 
           %li.comment.add_comment_bottom_link_container
-            = link_to "Add a comment", new_post_comment_path(post), :class => 'add_comment_bottom_link btn comment_action inactive'
+            - if user_signed_in? 
+              = link_to t('comments.new_comment.comment'), new_post_comment_path(post), :class => 'add_comment_bottom_link btn comment_action inactive'
 

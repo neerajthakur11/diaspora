@@ -7,8 +7,14 @@ require 'spec_helper'
 describe ShareVisibility do
   describe '.batch_import' do
     before do
-      @post = Factory(:status_message, :author => alice.person)
+      @post = FactoryGirl.create(:status_message, :author => alice.person)
       @contact = bob.contact_for(alice.person)
+    end
+
+    it 'returns false if share is public' do
+      @post.public = true
+      @post.save
+      ShareVisibility.batch_import([@contact.id], @post).should be_false
     end
 
     it 'creates a visibility for each user' do

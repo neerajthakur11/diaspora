@@ -5,81 +5,103 @@
 require 'spec_helper'
 
 describe ServicesController do
-  let(:mock_access_token) { Object.new }
-
-  let(:omniauth_auth) {
-    { 'provider' => 'twitter',
+  let(:omniauth_auth) do
+    { 'provider' => 'facebook',
       'uid'      => '2',
       'info'   => { 'nickname' => 'grimmin' },
-      'credentials' => { 'token' => 'tokin', 'secret' =>"not_so_much" }
-      }
-  }
+      'credentials' => { 'token' => 'tokin', 'secret' =>"not_so_much" }}
+    end
+  let(:user) { alice }
 
   before do
-    @user   = alice
-    @aspect = @user.aspects.first
-
-    sign_in :user, @user
-    @controller.stub!(:current_user).and_return(@user)
-    mock_access_token.stub!(:token => "12345", :secret => "56789")
+    sign_in :user, user
+    @controller.stub(:current_user).and_return(user)
   end
 
   describe '#index' do
-    it 'displays all connected serivices for a user' do
-      4.times do
-        Factory(:service, :user => @user)
-      end
+    before do
+      FactoryGirl.create(:service, user: user)
+    end
 
+    it "displays user's connected services" do
       get :index
-      assigns[:services].should == @user.services
+      assigns[:services].should == user.services
     end
   end
 
   describe '#create' do
-    it 'creates a new OmniauthService' do
+    before do
       request.env['omniauth.auth'] = omniauth_auth
-      lambda{
+      request.env['omniauth.origin'] = root_url
+    end
+
+    it 'creates a new service and associates it with the current user' do
+      expect {
+        post :create, :provider => 'facebook'
+      }.to change(user.services, :count).by(1)
+    end
+
+    it 'saves the provider' do
+      post :create, :provider => 'facebook'
+      user.reload.services.first.class.name.should == "Services::Facebook"
+    end
+
+    context 'when service exists with the same uid' do
+      before { Services::Twitter.create!(uid: omniauth_auth['uid'], user_id: user.id) }
+
+      it 'doesnt create a new service' do
+        expect {
         post :create, :provider => 'twitter'
-      }.should change(@user.services, :count).by(1)
+      }.to_not change(Service, :count).by(1)
+      end
+
+      it 'flashes an already_authorized error with the diaspora handle for the user'  do
+        post :create, :provider => 'twitter'
+        flash[:error].include?(user.profile.diaspora_handle).should be_true
+        flash[:error].include?( 'already authorized' ).should be_true
+      end
     end
 
-    it 'redirects to getting started if the user is getting started' do
-      @user.getting_started = true
-      request.env['omniauth.auth'] = omniauth_auth
-      post :create, :provider => 'twitter'
-      response.should redirect_to getting_started_path
+    context 'Twitter' do
+      context 'when the access-level is read-only' do
+
+        let(:header) { { 'x-access-level' => 'read' } }
+        let(:access_token) { double('access_token') } 
+        let(:extra) { {'extra' => { 'access_token' => access_token }} }
+        let(:provider) { {'provider' => 'twitter'} }
+
+        before do 
+          access_token.stub_chain(:response, :header).and_return header
+          request.env['omniauth.auth'] = omniauth_auth.merge!( provider).merge!( extra )
+        end
+
+        it 'doesnt create a new service' do
+          expect {
+            post :create, :provider => 'twitter'
+          }.to_not change(Service, :count).by(1)
+        end
+
+        it 'flashes an read-only access error'  do
+          post :create, :provider => 'twitter'
+          flash[:error].include?( 'Access level is read-only' ).should be_true
+        end
+      end
     end
 
-    it 'redirects to services url' do
-      @user.getting_started = false
-      request.env['omniauth.auth'] = omniauth_auth
-      post :create, :provider => 'twitter'
-      response.should redirect_to services_url
+    context 'Facebook' do
+      before do
+        facebook_auth_without_twitter_extras = { 'provider' => 'facebook', 'extras' => { 'someotherkey' => 'lorem'}}
+        request.env['omniauth.auth'] = omniauth_auth.merge!( facebook_auth_without_twitter_extras )
+      end
+
+      it "doesn't break when twitter-specific extras aren't available in omniauth hash" do
+        expect {
+          post :create, :provider => 'facebook'
+        }.to change(user.services, :count).by(1)
+      end
     end
 
-    it 'creates a twitter service' do
-      Service.delete_all
-      @user.getting_started = false
-      request.env['omniauth.auth'] = omniauth_auth
-      post :create, :provider => 'twitter'
-      @user.reload.services.first.class.name.should == "Services::Twitter"
-    end
-
-    it 'returns error if the service is connected with that uid' do
-      request.env['omniauth.auth'] = omniauth_auth
-
-      Services::Twitter.create!(:nickname => omniauth_auth["info"]['nickname'],
-                                           :access_token => omniauth_auth['credentials']['token'],
-                                           :access_secret => omniauth_auth['credentials']['secret'],
-                                           :uid => omniauth_auth['uid'],
-                                           :user => bob)
-
-      post :create, :provider => 'twitter'
-
-      flash[:error].include?(bob.person.profile.diaspora_handle).should be_true
-    end
-
-    context "photo fetching" do
+    context 'when fetching a photo' do
       before do
         omniauth_auth
         omniauth_auth["info"].merge!({"image" => "https://service.com/fallback_lowres.jpg"})
@@ -88,21 +110,17 @@ describe ServicesController do
       end
 
       it 'does not queue a job if the profile photo is set' do
-        profile = @user.person.profile
-        profile[:image_url] = "/non/default/image.jpg"
-        profile.save
+        @controller.stub(:no_profile_image?).and_return false
 
-        Resque.should_not_receive(:enqueue)
+        Workers::FetchProfilePhoto.should_not_receive(:perform_async)
 
         post :create, :provider => 'twitter'
       end
 
       it 'queues a job to save user photo if the photo does not exist' do
-        profile = @user.person.profile
-        profile[:image_url] = nil
-        profile.save
+        @controller.stub(:no_profile_image?).and_return true
 
-        Resque.should_receive(:enqueue).with(Jobs::FetchProfilePhoto, @user.id, anything(), "https://service.com/fallback_lowres.jpg")
+        Workers::FetchProfilePhoto.should_receive(:perform_async).with(user.id, anything(), "https://service.com/fallback_lowres.jpg")
 
         post :create, :provider => 'twitter'
       end
@@ -111,85 +129,13 @@ describe ServicesController do
 
   describe '#destroy' do
     before do
-      @service1 = Factory.create(:service, :user => @user)
+      @service1 = FactoryGirl.create(:service, :user => user)
     end
 
     it 'destroys a service selected by id' do
       lambda{
         delete :destroy, :id => @service1.id
-      }.should change(@user.services, :count).by(-1)
-    end
-  end
-
-  describe '#finder' do
-    before do
-      @service1 = Services::Facebook.new
-      @user.services << @service1
-      @person = Factory(:person)
-      @user.services.stub!(:where).and_return([@service1])
-      @service_users = [ ServiceUser.create(:contact => @user.contact_for(bob.person), :name => "Robert Bobson", :photo_url => "cdn1.fb.com/pic1.jpg",
-                                  :service => @service1, :uid => "321" ).tap{|su| su.stub!(:person).and_return(bob.person)},
-                ServiceUser.create(:name => "Eve Doe", :photo_url => "cdn1.fb.com/pic1.jpg", :person => eve.person, :service => @service1,
-                                   :uid => 'sdfae').tap{|su| su.stub!(:person).and_return(eve.person)},
-                ServiceUser.create(:name => "Robert Bobson", :photo_url => "cdn1.fb.com/pic1.jpg", :service => @service1, :uid => "dsfasdfas")]
-      @service1.should_receive(:finder).and_return(@service_users)
-    end
-
-    it 'calls the finder method for the service for that user' do
-      get :finder, :provider => @service1.provider
-      response.should be_success
-    end
-
-    it 'has no translations missing' do
-      get :finder, :provider => @service1.provider
-      Nokogiri(response.body).css('.translation_missing').should be_empty
-    end
-  end
-
-  describe '#inviter' do
-    before do
-      @uid = "abc"
-      fb = Factory(:service, :type => "Services::Facebook", :user => @user)
-      fb = Services::Facebook.find(fb.id)
-      @su = Factory(:service_user, :service => fb, :uid => @uid)
-      @invite_params = {:provider => 'facebook', :uid => @uid, :aspect_id => @user.aspects.first.id}
-    end
-
-    it 'redirects to a prefilled facebook message url' do
-      put :inviter, @invite_params
-      response.location.should match(/https:\/\/www\.facebook\.com\/messages\/.*?msg_prefill=.*/)
-    end
-
-    it 'creates an invitation' do
-      lambda {
-        put :inviter, @invite_params
-      }.should change(Invitation, :count).by(1)
-    end
-
-    it 'sets the invitation_id on the service_user' do
-      post :inviter, @invite_params
-      @su.reload.invitation.should_not be_nil
-    end
-
-    it 'does not create a duplicate invitation' do
-      invited_user = Factory.build(:user, :username =>nil)
-      invited_user.save(:validate => false)
-      inv = Invitation.create!(:sender => @user, :recipient => invited_user, :aspect => @user.aspects.first, :identifier => eve.email)
-      @invite_params[:invitation_id] = inv.id
-
-      lambda {
-        put :inviter, @invite_params
-      }.should_not change(Invitation, :count)
-    end
-
-    it 'disregards the amount of invites if open_invitations are enabled' do
-      open_bit = AppConfig[:open_invitations]
-      AppConfig[:open_invitations] = true
-
-      lambda {
-        put :inviter, @invite_params
-      }.should change(Invitation, :count).by(1)
-      AppConfig[:open_invitations] = open_bit
+      }.should change(user.services, :count).by(-1)
     end
   end
 end

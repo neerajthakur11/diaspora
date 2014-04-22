@@ -5,10 +5,10 @@
 require 'spec_helper'
 
 describe PublicsController do
-  let(:fixture_path) { File.join(Rails.root, 'spec', 'fixtures')}
+  let(:fixture_path) { Rails.root.join('spec', 'fixtures') }
   before do
     @user = alice
-    @person = Factory(:person)
+    @person = FactoryGirl.create(:person)
   end
 
   describe '#host_meta' do
@@ -16,7 +16,6 @@ describe PublicsController do
       get :host_meta
       response.should be_success
       response.body.should =~ /webfinger/
-      puts "Saving host-meta fixture to #{fixture_path}"
       save_fixture(response.body, "host-meta", fixture_path)
     end
   end
@@ -34,7 +33,7 @@ describe PublicsController do
 
     it 'enqueues a ReceiveUnencryptedSalmon job' do
       xml = "stuff"
-      Resque.should_receive(:enqueue).with(Jobs::ReceiveUnencryptedSalmon, xml)
+      Workers::ReceiveUnencryptedSalmon.should_receive(:perform_async).with(xml)
       post :receive_public, :xml => xml
     end
   end
@@ -48,7 +47,7 @@ describe PublicsController do
     end
 
     it 'enqueues a receive job' do
-      Resque.should_receive(:enqueue).with(Jobs::ReceiveEncryptedSalmon, @user.id, xml).once
+      Workers::ReceiveEncryptedSalmon.should_receive(:perform_async).with(@user.id, xml).once
       post :receive, "guid" => @user.person.guid.to_s, "xml" => xml
     end
 
@@ -56,12 +55,12 @@ describe PublicsController do
       aspect = @user.aspects.create(:name => 'foo')
       post1 = @user.post(:status_message, :text => 'moms', :to => [aspect.id])
       xml2 = post1.to_diaspora_xml
-      user2 = Factory(:user)
+      user2 = FactoryGirl.create(:user)
 
       salmon_factory = Salmon::EncryptedSlap.create_by_user_and_activity(@user, xml2)
       enc_xml = salmon_factory.xml_for(user2.person)
 
-      Resque.should_receive(:enqueue).with(Jobs::ReceiveEncryptedSalmon, @user.id, enc_xml).once
+      Workers::ReceiveEncryptedSalmon.should_receive(:perform_async).with(@user.id, enc_xml).once
       post :receive, "guid" => @user.person.guid.to_s, "xml" => CGI::escape(enc_xml)
     end
 

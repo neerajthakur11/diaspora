@@ -5,137 +5,156 @@
 require 'spec_helper'
 
 describe InvitationsController do
-  include Devise::TestHelpers
 
   before do
-    AppConfig[:open_invitations] = true
+    AppConfig.settings.invitations.open = true
     @user   = alice
-    @aspect = @user.aspects.first
-    @invite = {:invite_message=>"test", :aspects=> @aspect.id.to_s, :email=>"abc@example.com"}
-
-    request.env["devise.mapping"] = Devise.mappings[:user]
-    Webfinger.stub_chain(:new, :fetch).and_return(Factory(:person))
+    @invite = {'email_inviter' => {'message' => "test", 'emails' => "abc@example.com"}}
   end
 
   describe "#create" do
     before do
       sign_in :user, @user
-      @controller.stub!(:current_user).and_return(@user)
-      request.env["HTTP_REFERER"]= 'http://test.host/cats/foo'
+      @controller.stub(:current_user).and_return(@user)
+      @referer = 'http://test.host/cats/foo'
+      request.env["HTTP_REFERER"] = @referer
     end
 
-    it 'saves an invitation'  do
-      expect {
-        post :create,  :user => @invite
-      }.should change(Invitation, :count).by(1)
+    context "no emails" do
+      before do
+        @invite = {'email_inviter' => {'message' => "test", 'emails' => ""}}
+      end
+
+      it 'does not create an EmailInviter' do
+        Workers::Mail::InviteEmail.should_not_receive(:perform_async)
+        post :create,  @invite
+      end
+
+      it 'returns to the previous page' do
+        post :create, @invite
+        response.should redirect_to @referer
+      end
+
+      it 'flashes an error' do
+        post :create, @invite
+        flash[:error].should == I18n.t("invitations.create.empty")
+      end
     end
 
-    it 'handles a comma-separated list of emails' do
-      expect{
-        post :create, :user => @invite.merge(
-        :email => "foofoofoofoo@example.com, mbs@gmail.com")
-      }.should change(Invitation, :count).by(2)
+    context 'only valid emails' do
+      before do
+        @emails = 'mbs@gmail.com'
+        @invite = {'email_inviter' => {'message' => "test", 'emails' => @emails}}
+      end
+
+      it 'creates an InviteEmail worker'  do
+        inviter = double(:emails => [@emails], :send! => true)
+        Workers::Mail::InviteEmail.should_receive(:perform_async).with(@invite['email_inviter']['emails'], @user.id, @invite['email_inviter'])
+        post :create,  @invite
+      end
+
+      it 'returns to the previous page on success' do
+        post :create, @invite
+        response.should redirect_to @referer
+      end
+
+      it 'flashes a notice' do
+        post :create, @invite
+        expected =  I18n.t('invitations.create.sent', :emails => @emails.split(',').join(', '))
+        flash[:notice].should == expected
+      end
     end
 
-    it 'handles a comma-separated list of emails with whitespace' do
-      expect {
-        post :create, :user => @invite.merge(
-          :email => "foofoofoofoo@example.com   ,        mbs@gmail.com")
-          }.should change(Invitation, :count).by(2)
+    context 'only invalid emails' do
+      before do
+        @emails = 'invalid_email'
+        @invite = {'email_inviter' => {'message' => "test", 'emails' => @emails}}
+      end
+
+      it 'does not create an InviteEmail worker' do
+        Workers::Mail::InviteEmail.should_not_receive(:perform_async)
+        post :create,  @invite
+      end
+
+      it 'returns to the previous page' do
+        post :create, @invite
+        response.should redirect_to @referer
+      end
+
+      it 'flashes an error' do
+        post :create, @invite
+
+        expected =  I18n.t('invitations.create.rejected') + @emails.split(',').join(', ')
+        flash[:error].should == expected
+      end
     end
 
-    it "allows invitations without if invitations are open" do
-      open_bit = AppConfig[:open_invitations]
-      AppConfig[:open_invitations] = true
+    context 'mixed valid and invalid emails' do
+      before do
+        @valid_emails = 'foo@bar.com,mbs@gmail.com'
+        @invalid_emails = 'invalid'
+        @invite = {'email_inviter' => {'message' => "test", 'emails' =>
+                                       @valid_emails + ',' + @invalid_emails}}
+      end
 
-      expect{
-        post :create, :user => @invite
-      }.to change(Invitation, :count).by(1)
-      AppConfig[:open_invitations] = open_bit
+      it 'creates an InviteEmail worker'  do
+        inviter = double(:emails => [@emails], :send! => true)
+        Workers::Mail::InviteEmail.should_receive(:perform_async).with(@valid_emails, @user.id, @invite['email_inviter'])
+        post :create,  @invite
+      end
+
+      it 'returns to the previous page' do
+        post :create, @invite
+        response.should redirect_to @referer
+      end
+
+      it 'flashes a notice' do
+        post :create, @invite
+        expected =  I18n.t('invitations.create.sent', :emails =>
+                          @valid_emails.split(',').join(', ')) +
+                          '. ' + I18n.t('invitations.create.rejected') +
+                          @invalid_emails.split(',').join(', ')
+        flash[:error].should == expected
+      end
     end
 
-    it 'returns to the previous page on success' do
-      post :create, :user => @invite
-      response.should redirect_to("http://test.host/cats/foo")
-    end
+    it 'redirects if invitations are closed' do
+      open_bit = AppConfig.settings.invitations.open?
+      AppConfig.settings.invitations.open =  false
 
-    it 'strips out your own email' do
-      lambda {
-        post :create, :user => @invite.merge(:email => @user.email)
-      }.should_not change(Invitation, :count)
-
-      expect{
-        post :create, :user => @invite.merge(:email => "hello@example.org, #{@user.email}")
-      }.should change(Invitation, :count).by(1)
+      post :create, @invite
+      response.should be_redirect
+      AppConfig.settings.invitations.open = open_bit
     end
   end
 
-  describe "#email" do
-    before do
-      invites = Invitation.batch_invite(["foo@example.com"], :message => "hi", :sender => @user, :aspect => @user.aspects.first, :service => 'email', :language => "en-US")
-      invites.first.send!
-      @invited_user = User.find_by_email("foo@example.com")
-    end
+  describe '#email' do
 
-    it "succeeds" do
-      get :email, :invitation_token => @invited_user.invitation_token
+    it 'succeeds' do
+      get :email, :invitation_code => "anycode"
       response.should be_success
     end
 
-    it "shows an error if there's no such invitation token" do
-      get :email, :invitation_token => "12345"
-      response.should render_template(:token_not_found)
-    end
-  end
-
-  describe "#update" do
-    before do
-      invite = Factory(:invitation, :sender => @user, :service => 'email', :identifier => "a@a.com")
-      @invited_user = invite.attach_recipient!
-
-      @accept_params = {:user=>
-        {:password_confirmation =>"password",
-         :email => "a@a.com", 
-         :username=>"josh",
-         :password=>"password",
-         :invitation_token => @invited_user.invitation_token}}
-
-    end
-
-    context 'success' do
-      let(:invited) {User.find_by_username(@accept_params[:user][:username])}
-
-      it 'creates a user' do
-        put :update, @accept_params
-        invited.should_not be_nil
+    context 'legacy invite tokens' do
+      def get_email
+        get :email, :invitation_token => @invitation_token
       end
 
-      it 'seeds the aspects' do
-        put :update, @accept_params
-        invited.aspects.count.should == 4
-      end
+      context 'invalid token' do
+        @invitation_token = "invalidtoken"
 
-      it 'adds a contact' do
-        lambda { 
-          put :update, @accept_params
-        }.should change(@user.contacts, :count).by(1)
-      end
-    end
+        it 'redirects and flashes if the invitation token is invalid' do
+          get_email
 
-    context 'failure' do
-      before do
-        @fail_params = @accept_params
-        @fail_params[:user][:username] = @user.username
-      end
+          response.should be_redirect
+          response.should redirect_to root_url
+        end
 
-      it 'stays on the invitation accept form' do
-        put :update, @fail_params
-        response.location.include?(accept_user_invitation_path).should be_true
-      end
+        it 'flashes an error if the invitation token is invalid' do
+          get_email
 
-      it 'keeps the invitation token' do
-        put :update, @fail_params
-        response.location.include?("invitation_token=#{@invited_user.invitation_token}").should be_true
+          flash[:error].should == I18n.t("invitations.check_token.not_found")
+        end
       end
     end
   end
@@ -147,42 +166,53 @@ describe InvitationsController do
     end
   end
 
-  describe '#resend' do
-    before do
-      sign_in :user, @user
-      @controller.stub!(:current_user).and_return(@user)
-      request.env["HTTP_REFERER"]= 'http://test.host/cats/foo'
-
-      invite = Factory(:invitation, :sender => @user, :service => 'email', :identifier => "a@a.com")
-      @invited_user = invite.attach_recipient!
+  describe 'redirect logged out users to the sign in page' do
+    it 'redriects #new' do
+      get :new
+      response.should be_redirect
+      response.should redirect_to new_user_session_path
     end
 
-    it 'calls resend invitation if one exists' do
-      @user.reload.invitations_from_me.count.should == 1
-      invitation = @user.invitations_from_me.first
-      Resque.should_receive(:enqueue)
-      put :resend, :id => invitation.id
-    end
-
-    it 'does not send an invitation for a different user' do
-      invitation2 = Factory(:invitation, :sender => bob, :service => 'email', :identifier => "a@a.com")
-
-      Resque.should_not_receive(:enqueue)
-      put :resend, :id => invitation2.id
+    it 'redirects #create' do
+      post :create
+      response.should be_redirect
+      response.should redirect_to new_user_session_path
     end
   end
 
-
-  describe '#extract_messages' do
-    before do
-      sign_in alice
+  describe '.valid_email?' do
+    it 'returns false for empty email' do
+      subject.send(:valid_email?, '').should be false
     end
-    it 'displays a message that tells the user how many invites were sent, and which REJECTED' do
-      post :create, :user => @invite.merge(
-        :email => "mbs@gmail.com, foo@bar.com, foo.com, lala@foo, cool@bar.com")
-      flash[:notice].should_not be_blank
-      flash[:notice].should =~ /foo\.com/
-      flash[:notice].should =~ /lala@foo/
+
+    it 'returns false for email without @-sign' do
+      subject.send(:valid_email?, 'foo').should be false
+    end
+
+    it 'returns true for valid email' do
+      subject.send(:valid_email?, 'foo@bar.com').should be true
+    end
+  end
+
+  describe '.html_safe_string_from_session_array' do
+    it 'returns "" for blank session[key]' do
+      subject.send(:html_safe_string_from_session_array, :blank).should eq ""
+    end
+
+    it 'returns "" if session[key] is not an array' do
+      session[:test_key] = "test"
+      subject.send(:html_safe_string_from_session_array, :test_key).should eq ""
+    end
+
+    it 'returns the correct value' do
+      session[:test_key] = ["test", "foo"]
+      subject.send(:html_safe_string_from_session_array, :test_key).should eq "test, foo"
+    end
+
+    it 'sets session[key] to nil' do
+      session[:test_key] = ["test"]
+      subject.send(:html_safe_string_from_session_array, :test_key)
+      session[:test_key].should be nil
     end
   end
 end

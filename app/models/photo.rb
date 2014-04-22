@@ -3,10 +3,27 @@
 #   the COPYRIGHT file.
 
 class Photo < ActiveRecord::Base
-  require 'carrierwave/orm/activerecord'
-
+  include Diaspora::Federated::Shareable
   include Diaspora::Commentable
   include Diaspora::Shareable
+
+  # NOTE API V1 to be extracted
+  acts_as_api
+  api_accessible :backbone do |t|
+    t.add :id
+    t.add :guid
+    t.add :created_at
+    t.add :author
+    t.add lambda { |photo|
+      { :small => photo.url(:thumb_small),
+        :medium => photo.url(:thumb_medium),
+        :large => photo.url(:scaled_full) }
+    }, :as => :sizes
+    t.add lambda { |photo|
+      { :height => photo.height,
+        :width => photo.width }
+    }, :as => :dimensions
+  end
 
   mount_uploader :processed_image, ProcessedImage
   mount_uploader :unprocessed_image, UnprocessedImage
@@ -17,22 +34,20 @@ class Photo < ActiveRecord::Base
   xml_attr :text
   xml_attr :status_message_guid
 
-  belongs_to :status_message, :foreign_key => :status_message_guid, :primary_key => :guid, :counter_cache => :photos_count
+  xml_attr :height
+  xml_attr :width
 
-  attr_accessible :text, :pending
+  belongs_to :status_message, :foreign_key => :status_message_guid, :primary_key => :guid
+  validates_associated :status_message
+  delegate :author_name, to: :status_message, prefix: true
+
   validate :ownership_of_status_message
 
   before_destroy :ensure_user_picture
   after_destroy :clear_empty_status_message
 
-  after_create :queue_processing_job
-
-  after_save do
-    self.status_message.update_photos_counter if status_message
-  end
-
-  after_destroy do
-    self.status_message.update_photos_counter if status_message
+  after_commit :on => :create do
+    queue_processing_job if self.author.local?
   end
 
   def clear_empty_status_message
@@ -53,13 +68,13 @@ class Photo < ActiveRecord::Base
   end
 
   def self.diaspora_initialize(params = {})
-    photo = self.new params.to_hash
+    photo = self.new params.to_hash.slice(:text, :pending)
     photo.author = params[:author]
     photo.public = params[:public] if params[:public]
     photo.pending = params[:pending] if params[:pending]
     photo.diaspora_handle = photo.author.diaspora_handle
 
-    photo.random_string = ActiveSupport::SecureRandom.hex(10)
+    photo.random_string = SecureRandom.hex(10)
 
     if params[:user_file]
       image_file = params.delete(:user_file)
@@ -81,9 +96,7 @@ class Photo < ActiveRecord::Base
 
   def update_remote_path
     unless self.unprocessed_image.url.match(/^https?:\/\//)
-      pod_url = AppConfig[:pod_url].dup
-      pod_url.chop! if AppConfig[:pod_url][-1,1] == '/'
-      remote_path = "#{pod_url}#{self.unprocessed_image.url}"
+      remote_path = "#{AppConfig.pod_uri.to_s.chomp("/")}#{self.unprocessed_image.url}"
     else
       remote_path = self.unprocessed_image.url
     end
@@ -112,12 +125,8 @@ class Photo < ActiveRecord::Base
     }
   end
 
-  def thumb_hash
-    {:thumb_url => url(:thumb_medium), :id => id, :album_id => nil}
-  end
-
   def queue_processing_job
-    Resque.enqueue(Jobs::ProcessPhoto, self.id)
+    Workers::ProcessPhoto.perform_async(self.id)
   end
 
   def mutable?

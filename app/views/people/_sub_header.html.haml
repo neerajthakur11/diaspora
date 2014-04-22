@@ -17,7 +17,7 @@
     = person.diaspora_handle
 
   .description
-    - if !person.profile.tag_string.blank? && user_signed_in?
+    - if !person.tag_string.blank? && user_signed_in?
       = Diaspora::Taggable.format_tags(person.profile.tag_string)
       - if user_signed_in? && person == current_user.person
         %span.hover_edit
@@ -28,5 +28,7 @@
           = t('.you_have_no_tags')
           %span.add_tags
             = link_to t('.add_some'), edit_profile_path
-
+  - if user_signed_in? && person == current_user.person && current_page?(controller: :people, action: :show)
+    %hr
+    = render 'aspects/aspect_stream', :stream => @stream
 %hr

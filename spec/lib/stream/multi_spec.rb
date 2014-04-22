@@ -1,5 +1,5 @@
 require 'spec_helper'
-require File.join(Rails.root, 'spec', 'shared_behaviors', 'stream')
+require Rails.root.join('spec', 'shared_behaviors', 'stream')
 
 describe Stream::Multi do
   before do
@@ -10,11 +10,14 @@ describe Stream::Multi do
     it_should_behave_like 'it is a stream'
   end
 
-  describe '#is_in?' do
-    it 'handles when the cache returns strings' do
-      p = Factory(:status_message)
-      @stream.should_receive(:aspects_post_ids).and_return([p.id.to_s])
-      @stream.send(:is_in?, :aspects, p).should be_true
+  describe "#posts" do
+    it "calls EvilQuery::MultiStream with correct parameters" do
+      ::EvilQuery::MultiStream.should_receive(:new)
+        .with(alice, 'updated_at', @stream.max_time,
+              AppConfig.settings.community_spotlight.enable? &&
+              alice.show_community_spotlight_in_stream?)
+        .and_return(double.tap { |m| m.stub(:make_relation!)})
+      @stream.posts
     end
   end
 
@@ -44,7 +47,7 @@ describe Stream::Multi do
     end
 
     it 'returns includes new user hashtag' do
-      @stream.send(:publisher_prefill).should include("#NewHere")
+      @stream.send(:publisher_prefill).should match(/#NewHere/i)
     end
 
     it 'includes followed hashtags' do
@@ -53,7 +56,7 @@ describe Stream::Multi do
 
     context 'when invited by another user' do
       before do
-        @user = Factory(:user, :invited_by => alice)
+        @user = FactoryGirl.create(:user, :invited_by => alice)
         @inviter = alice.person
 
         @stream = Stream::Multi.new(@user)

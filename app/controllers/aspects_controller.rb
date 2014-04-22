@@ -2,45 +2,24 @@
 #   licensed under the Affero General Public License version 3 or later.  See
 #   the COPYRIGHT file.
 
-require File.join(Rails.root, "lib", 'stream', "aspect")
-
 class AspectsController < ApplicationController
   before_filter :authenticate_user!
-  before_filter :save_sort_order, :only => :index
-  before_filter :save_selected_aspects, :only => :index
-  before_filter :ensure_page, :only => :index
 
-  respond_to :html, :js
-  respond_to :json, :only => [:show, :create]
-
-  def index
-    aspect_ids = (session[:a_ids] ? session[:a_ids] : [])
-    @stream = Stream::Aspect.new(current_user, aspect_ids,
-                               :order => sort_order,
-                               :max_time => params[:max_time].to_i)
-
-    if params[:only_posts]
-      render :partial => 'shared/stream', :locals => {:posts => @stream.stream_posts}
-    end
-  end
+  respond_to :html,
+             :js,
+             :json
 
   def create
-    @aspect = current_user.aspects.create(params[:aspect])
+    @aspect = current_user.aspects.build(aspect_params)
+    aspecting_person_id = params[:aspect][:person_id]
 
-    if @aspect.valid?
+    if @aspect.save
       flash[:notice] = I18n.t('aspects.create.success', :name => @aspect.name)
-      if current_user.getting_started
-        redirect_to :back
-      elsif request.env['HTTP_REFERER'].include?("contacts")
-        redirect_to :back
-      elsif params[:aspect][:person_id].present?
-        @person = Person.where(:id => params[:aspect][:person_id]).first
 
-        if @contact = current_user.contact_for(@person)
-          @contact.aspects << @aspect
-        else
-          @contact = current_user.share_with(@person, @aspect)
-        end
+      if current_user.getting_started || request.referer.include?("contacts")
+        redirect_to :back
+      elsif aspecting_person_id.present?
+        connect_person_to_aspect(aspecting_person_id)
       else
         redirect_to contacts_path(:a_id => @aspect.id)
       end
@@ -102,7 +81,7 @@ class AspectsController < ApplicationController
     @contacts = @contacts_in_aspect + @contacts_not_in_aspect
 
     unless @aspect
-      render :file => "#{Rails.root}/public/404.html", :layout => false, :status => 404
+      render :file => Rails.root.join('public', '404.html').to_s, :layout => false, :status => 404
     else
       @aspect_ids = [@aspect.id]
       @aspect_contacts_count = @aspect.contacts.size
@@ -113,12 +92,12 @@ class AspectsController < ApplicationController
   def update
     @aspect = current_user.aspects.where(:id => params[:id]).first
 
-    if @aspect.update_attributes!(params[:aspect])
+    if @aspect.update_attributes!(aspect_params)
       flash[:notice] = I18n.t 'aspects.update.success', :name => @aspect.name
     else
       flash[:error] = I18n.t 'aspects.update.failure', :name => @aspect.name
     end
-    render :json => { :name => @aspect.name }
+    render :json => { :id => @aspect.id, :name => @aspect.name }
   end
 
   def toggle_contact_visibility
@@ -132,15 +111,18 @@ class AspectsController < ApplicationController
     @aspect.save
   end
 
-  def ensure_page
-    params[:max_time] ||= Time.now + 1
-  end
-
   private
 
-  def save_selected_aspects
-    if params[:a_ids].present?
-      session[:a_ids] = params[:a_ids]
+  def connect_person_to_aspect(aspecting_person_id)
+    @person = Person.find(aspecting_person_id)
+    if @contact = current_user.contact_for(@person)
+      @contact.aspects << @aspect
+    else
+      @contact = current_user.share_with(@person, @aspect)
     end
+  end
+
+  def aspect_params
+    params.require(:aspect).permit(:name, :contacts_visible, :order_id)
   end
 end

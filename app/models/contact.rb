@@ -7,6 +7,9 @@ class Contact < ActiveRecord::Base
 
   belongs_to :person
   validates :person, :presence => true
+  
+  delegate :name, :diaspora_handle, :guid, :first_name,
+           to: :person, prefix: true
 
   has_many :aspect_memberships
   has_many :aspects, :through => :aspect_memberships
@@ -21,12 +24,10 @@ class Contact < ActiveRecord::Base
   validates_presence_of :user
   validates_uniqueness_of :person_id, :scope => :user_id
 
-  before_destroy :destroy_notifications,
-                 :repopulate_cache!
-
+  before_destroy :destroy_notifications
 
   scope :all_contacts_of_person, lambda {|x| where(:person_id => x.id)}
-  
+
     # contact.sharing is true when contact.person is sharing with contact.user
   scope :sharing, lambda {
     where(:sharing => true)
@@ -35,6 +36,11 @@ class Contact < ActiveRecord::Base
   # contact.receiving is true when contact.user is sharing with contact.person
   scope :receiving, lambda {
     where(:receiving => true)
+  }
+
+  scope :for_a_stream, lambda {
+    includes(:aspects, :person => :profile).
+        order('profiles.last_name ASC')
   }
 
   scope :only_sharing, lambda {
@@ -46,13 +52,6 @@ class Contact < ActiveRecord::Base
                        :target_id => person_id,
                        :recipient_id => user_id,
                        :type => "Notifications::StartedSharing").delete_all
-  end
-
-  def repopulate_cache!
-    if RedisCache.configured? && self.user.present?
-      cache = RedisCache.new(self.user)
-      cache.repopulate!
-    end
   end
 
   def dispatch_request
@@ -69,15 +68,14 @@ class Contact < ActiveRecord::Base
 
   def receive_shareable(shareable)
     ShareVisibility.create!(:shareable_id => shareable.id, :shareable_type => shareable.class.base_class.to_s, :contact_id => self.id)
-    shareable.socket_to_user(self.user, :aspect_ids => self.aspect_ids) if shareable.respond_to? :socket_to_user
   end
 
   def contacts
     people = Person.arel_table
-    incoming_aspects = Aspect.joins(:contacts).where(
+    incoming_aspects = Aspect.where(
       :user_id => self.person.owner_id,
-      :contacts_visible => true,
-      :contacts => {:person_id => self.user.person.id}).select('aspects.id')
+      :contacts_visible => true).joins(:contacts).where(
+        :contacts => {:person_id => self.user.person_id}).select('aspects.id')
     incoming_aspect_ids = incoming_aspects.map{|a| a.id}
     similar_contacts = Person.joins(:contacts => :aspect_memberships).where(
       :aspect_memberships => {:aspect_id => incoming_aspect_ids}).where(people[:id].not_eq(self.user.person.id)).select('DISTINCT people.*')

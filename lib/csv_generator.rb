@@ -3,9 +3,9 @@ module CsvGenerator
   PATH = '/tmp/'
   BACKER_CSV_LOCATION = File.join('/usr/local/app/diaspora/', 'backer_list.csv')
   #BACKER_CSV_LOCATION = File.join('/home/ilya/workspace/diaspora/', 'backer_list.csv')
-  WAITLIST_LOCATION = File.join(Rails.root, 'config', 'mailing_list.csv')
-  OFFSET_LOCATION = File.join(Rails.root, 'config', 'email_offset')
-  UNSUBSCRIBE_LOCATION = File.join(Rails.root, 'config', 'unsubscribe.csv')
+  WAITLIST_LOCATION = Rails.root.join('config', 'mailing_list.csv')
+  OFFSET_LOCATION = Rails.root.join('config', 'email_offset')
+  UNSUBSCRIBE_LOCATION = Rails.root.join('config', 'unsubscribe.csv')
 
   def self.all_active_users
     file = self.filename("all_active_users")
@@ -197,14 +197,9 @@ SQL
 
   # ---------------- HELPER METHODS -------------------------
   def self.load_waiting_list_csv(filename)
+    require 'csv'
     csv = filename
-    if RUBY_VERSION.include? "1.8"
-      require 'fastercsv'
-       people = FasterCSV.read(csv)
-     else
-       require 'csv'
-       people = CSV.read(csv)
-     end
+    people = CSV.read(csv)
     people
   end
 

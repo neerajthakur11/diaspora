@@ -1,5 +1,5 @@
 When /^I focus the comment field$/ do
-  find("a.focus_comment_textarea").click
+  focus_comment_box
 end
 
 Then /^the first comment field should be open/ do
@@ -7,5 +7,14 @@ Then /^the first comment field should be open/ do
 end
 
 Then /^the first comment field should be closed$/ do
-  find("#main_stream .stream_element .new_comment").should_not be_visible
+  page.should have_css(".stream_element")
+  page.should_not have_selector("#main_stream .stream_element .new_comment", match: :first)
+end
+
+When /^I comment "([^"]*)" on "([^"]*)"$/ do |comment_text, post_text|
+  comment_on_post(post_text, comment_text)
+end
+
+When /^I make a show page comment "([^"]*)"$/ do |comment_text|
+  comment_on_show_page(comment_text)
 end

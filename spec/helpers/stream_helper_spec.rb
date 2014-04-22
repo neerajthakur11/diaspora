@@ -5,28 +5,30 @@
 require 'spec_helper'
 
 describe StreamHelper do
-  before do
-    @post = Factory(:status_message)
-  end
-  describe "#time_for_sort" do
-    it "returns sort_order for an aspectscontroller" do
-      sort_order = :stored_in_session
-      stub!(:controller).and_return(AspectsController.new)
-      stub!(:session).and_return({:sort_order => sort_order})
-      @post.should_receive(sort_order)
-      time_for_sort(@post)
+  describe "next_page_path" do
+    def build_controller controller_class
+      controller_class.new.tap {|c| c.request = controller.request }
     end
-    it "returns post.created_at otherwise" do
-      stub!(:controller).and_return(mock())
-      time_for_sort(@post).should == @post.created_at
+    before do
+      @stream = Stream::Base.new(alice, :max_time => Time.now)
     end
-  end
 
-  describe '#next_page_path' do
-    it 'works for apps page' do
-      stub!(:controller).and_return(AppsController.new)
-      @posts = [Factory(:activity_streams_photo)]
-      next_page_path.should include '/apps/1'
+    it 'works for public page' do
+      helper.stub(:controller).and_return(build_controller(PostsController))
+      helper.next_page_path.should include '/public'
+    end
+
+    it 'works for stream page when current page is stream' do
+      helper.stub(:current_page?).and_return(true)
+      helper.stub(:controller).and_return(build_controller(StreamsController))
+      helper.next_page_path.should include stream_path
+    end
+
+    it 'works for activity page when current page is not stream' do
+      helper.stub("current_page?").and_return(false)
+      helper.stub(:controller).and_return(build_controller(StreamsController))
+      # binding.pry
+      helper.next_page_path.should include activity_stream_path
     end
   end
 end

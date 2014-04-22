@@ -6,7 +6,7 @@
   = t('.title')
 
 - content_for :head do
-  = include_javascripts :people
+  = javascript_include_tag :people
 
 #section_header
   %h2
@@ -18,40 +18,18 @@
   #people_stream.stream.contacts
     - if @aspect
       #aspect_controls
-        - suggested_limit = 16
-        - conv_opts = { :class => "button conversation_button", :rel => "facebox"}
-        - conv_opts[:title] = t('.many_people_are_you_sure', :suggested_limit => suggested_limit) if @contacts.size > suggested_limit
+        - if @contacts_size > 0 && @contacts_size < 20 #TODO Fla: why 20? Technical restriction? We already warn the user if > 16
+          = start_a_conversation_link(@aspect, @contacts_size)
+        = link_to edit_aspect_path(@aspect), rel: "facebox", class: "button" do
+          = t('aspects.edit.manage')
+          %span.modify_aspect
+        = aspect_visibility_link(@aspect)
+        = link_to @aspect, method: "delete", data: { confirm: t('aspects.edit.confirm_remove_aspect') }, class: 'button delete' do
+          = t('delete')
+          %span.icons-monotone_close_exit_delete
 
-        - if @contacts.size < 20
-          = link_to t('.start_a_conversation'), new_conversation_path(:aspect_id => @aspect.id, :name => @aspect.name), conv_opts
-        - if @contacts.size
-          = link_to t('.add_to_aspect', :name => @aspect.name), edit_aspect_path(@aspect), :rel => "facebox"
-
-    - if @contacts.size > 0
-      - for contact in @contacts
-        .stream_element{:id => contact.person.id}
-          .right
-            - if @aspect
-              = link_to(image_tag('/images/icons/monotone_close_exit_delete.png', :height => 20, :width => 20),
-                  {:controller => "aspect_memberships",
-                    :action => 'destroy',
-                    :id => 42,
-                    :aspect_id => @aspect.id,
-                    :person_id => contact.person.id},
-                  :title => t('.remove_person_from_aspect', :person_name => contact.person.first_name, :aspect_name => @aspect.name),
-                  :method => 'delete')
-
-            - else
-              = render :partial => 'people/relationship_action',
-                       :locals => { :person => contact.person, :contact => contact,
-                                    :current_user => current_user }
-
-          = person_image_link(contact.person)
-          .content
-            %span.from
-              =person_link(contact.person)
-            .info
-              = contact.person.diaspora_handle
+    - if @contacts_size > 0
+      = render @contacts
 
       = will_paginate @contacts
     - else
@@ -59,10 +37,10 @@
         = t('.no_contacts')
         %br
         %br
-        = t('.check_out')
-        = link_to t('contacts.spotlight.community_spotlight'), community_spotlight_path
         - if @aspect
-          or
-          = link_to t('.add_to_aspect', :name => @aspect.name), edit_aspect_path(@aspect), :rel => "facebox"
-
-
+          != t('.no_contacts_message_with_aspect',
+              :community_spotlight => link_to(t('.community_spotlight'), community_spotlight_path),
+              :add_to_aspect_link => link_to(t('.add_to_aspect_link', :name => @aspect.name), edit_aspect_path(@aspect), :rel => "facebox"))
+        - else
+          != t('.no_contacts_message',
+               :community_spotlight => link_to(t('.community_spotlight'), community_spotlight_path))

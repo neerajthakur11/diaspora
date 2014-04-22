@@ -4,19 +4,16 @@
 
 
 class Pubsubhubbub
-  H = {"User-Agent" => "PubSubHubbub Ruby", "Content-Type" => "application/x-www-form-urlencoded"}
-
   def initialize(hub, options={})
-    @headers = H.merge(options[:head]) if options[:head]
-    @hub = hub 
+    @hub = hub
   end
 
   def publish(feed)
-    begin
-      response = RestClient.post(@hub, :headers => @headers, 'hub.url' => feed, 'hub.mode' => 'publish')
-    return response
-    rescue  RestClient::BadRequest=> e
-      Rails.logger.warn "Public URL for your users are incorrect.  this is ok if you are in development and localhost is your pod_url#{e.inspect}" 
+
+    conn = Faraday.new do |c|
+      c.use Faraday::Request::UrlEncoded  # encode request params as "www-form-urlencoded"
+      c.use Faraday::Adapter::NetHttp     # perform requests with Net::HTTP
     end
+    conn.post @hub, {'hub.url' => feed, 'hub.mode' => 'publish'}
   end
 end

@@ -2,13 +2,16 @@
 #   licensed under the Affero General Public License version 3 or later.  See
 #   the COPYRIGHT file.
 
-class InvitationsController < Devise::InvitationsController
+class InvitationsController < ApplicationController
 
-  before_filter :check_token, :only => [:edit, :email]
-  before_filter :check_if_invites_open, :only =>[:create]
+  before_filter :authenticate_user!, :only => [:new, :create]
 
   def new
-    @sent_invitations = current_user.invitations_from_me.includes(:recipient)
+    @invite_code = current_user.invitation_code
+
+    @invalid_emails = html_safe_string_from_session_array(:invalid_email_invites)
+    @valid_emails   = html_safe_string_from_session_array(:valid_email_invites)
+
     respond_to do |format|
       format.html do
         render :layout => false
@@ -16,94 +19,87 @@ class InvitationsController < Devise::InvitationsController
     end
   end
 
-  def create
-    aspect_id = params[:user].delete(:aspects)
-    message = params[:user].delete(:invite_messages)
-    emails = params[:user][:email].to_s.gsub(/\s/, '').split(/, */)
-    #NOTE should we try and find users by email here? probs
-    aspect = current_user.aspects.find(aspect_id)
-    
-    language = params[:user][:language]
-
-    invites = Invitation.batch_invite(emails, :message => message, :sender => current_user, :aspect => aspect, :service => 'email', :language => language)
-
-    flash[:notice] = extract_messages(invites)
-
-    redirect_to :back
-  end
-
-  def update
-    invitation_token = params[:user][:invitation_token]
-
-    if invitation_token.nil? || invitation_token.blank?
-      redirect_to :back, :error => I18n.t('invitations.check_token.not_found')
-      return
-    end
-
-    user = User.find_by_invitation_token!(invitation_token)
-
-    user.accept_invitation!(params[:user])
-
-    if user.persisted? && user.person && user.person.persisted?
-      user.seed_aspects
-      flash[:notice] = I18n.t 'registrations.create.success'
-      sign_in_and_redirect(:user, user)
-    else
-      user.errors.delete(:person)
-      flash[:error] = user.errors.full_messages.join(", ")
-      redirect_to accept_user_invitation_path(:invitation_token => params[:user][:invitation_token])
-    end
-  end
-
-  def resend
-    invitation = current_user.invitations_from_me.where(:id => params[:id]).first
-    if invitation
-      Resque.enqueue(Jobs::ResendInvitation, invitation.id)
-      flash[:notice] = I18n.t('invitations.create.sent') + invitation.recipient.email
-    end
-    redirect_to :back
+  # this is  for legacy invites.  We try to look the person who sent them the
+  # invite, and use their new invite code
+  # owe will be removing this eventually
+  # @depreciated
+  def edit
+    user = User.find_by_invitation_token(params[:invitation_token])
+    invitation_code = user.ugly_accept_invitation_code
+    redirect_to invite_code_path(invitation_code)
   end
 
   def email
-    @invs = []
-    @resource = User.find_by_invitation_token(params[:invitation_token])
-    render 'devise/mailer/invitation_instructions', :layout => false
+    @invitation_code =
+      if params[:invitation_token]
+        # this is  for legacy invites.
+        user = User.find_by_invitation_token(params[:invitation_token])
+
+        user.ugly_accept_invitation_code if user
+      else
+        params[:invitation_code]
+      end
+
+    if @invitation_code.present?
+      render 'notifier/invite', :layout => false
+    else
+      flash[:error] = t('invitations.check_token.not_found')
+
+      redirect_to root_url
+    end
   end
 
-  protected
-  def check_token
-    if User.find_by_invitation_token(params[:invitation_token]).nil?
-      render 'invitations/token_not_found'
+  def create
+    emails = inviter_params[:emails].split(',').map(&:strip).uniq
+
+    valid_emails, invalid_emails = emails.partition { |email| valid_email?(email) }
+
+    session[:valid_email_invites] = valid_emails
+    session[:invalid_email_invites] = invalid_emails
+
+    unless valid_emails.empty?
+      Workers::Mail::InviteEmail.perform_async(valid_emails.join(','),
+                                               current_user.id,
+                                               inviter_params)
     end
+
+    if emails.empty?
+      flash[:error] = t('invitations.create.empty')
+    elsif invalid_emails.empty?
+      flash[:notice] =  t('invitations.create.sent', :emails => valid_emails.join(', '))
+    elsif valid_emails.empty?
+      flash[:error] = t('invitations.create.rejected') +  invalid_emails.join(', ')
+    else
+      flash[:error] = t('invitations.create.sent', :emails => valid_emails.join(', '))
+      flash[:error] << '. '
+      flash[:error] << t('invitations.create.rejected') +  invalid_emails.join(', ')
+    end
+
+    redirect_to :back
   end
 
   def check_if_invites_open
-    unless AppConfig[:open_invitations]
+    unless AppConfig.settings.invitations.open?
       flash[:error] = I18n.t 'invitations.create.no_more'
+
       redirect_to :back
-      return
     end
   end
 
-  # @param invites [Array<Invitation>] Invitations to be sent.
-  # @return [String] A full list of success and error messages.
-  def extract_messages(invites)
-    success_message = "Invites Successfully Sent to: "
-    failure_message = "There was a problem with: "
-    following_message = " already are on Diaspora, so you are now sharing with them."
-    successes, failures = invites.partition{|x| x.persisted? }
+  private
+  def valid_email?(email)
+    User.email_regexp.match(email).present?
+  end
 
-    followings, real_failures = failures.partition{|x| x.errors[:recipient].present? }
+  def html_safe_string_from_session_array(key)
+    return "" unless session[key].present?
+    return "" unless session[key].respond_to?(:join)
+    value = session[key].join(', ').html_safe
+    session[key] = nil
+    return value
+  end
 
-    success_message += successes.map{|k| k.identifier }.to_sentence
-    failure_message += real_failures.map{|k| k.identifier }.to_sentence
-    following_message += followings.map{|k| k.identifier}.to_sentence
-
-    messages = []
-    messages << success_message if successes.present?
-    messages << failure_message if failures.present?
-    messages << following_message if followings.present?
-
-    messages.join('\n')
+  def inviter_params
+    params.require(:email_inviter).permit(:message, :locale, :emails)
   end
 end

@@ -1,8 +1,9 @@
-default: "en"
 available:
   ar: "العربية"
+  art-nvi: "Na'vi"
   bg: "български език"
   br: "Brezhoneg"
+  bs: "bosanski jezik"
   ca: "Català"
   cs: "Čeština"
   cy: "Cymraeg"
@@ -18,18 +19,25 @@ available:
   es: "Castellano"
   es-AR: "Castellano - Argentina"
   es-CL: "Castellano - Chile"
+  es-VE: "Castellano - Venezuela"
+  es-MX: "Español, México"
+  et: "Eesti"
   eu: "Euskara"
   fi: "Suomi"
   fil: "Filipino"
   fr: "Français"
+  fy: "Frysk"
   ga: "Gaeilge"
   gl: "Galego"
   he: "עברית"
   hu: "magyar nyelv"
+  hy: "հայերեն"
+  ia: "Interlingua"
   id: "Bahasa Indonesia"
   is: "íslenska"
   it: "Italiano"
   ja: "日本語"
+  ka: "ქართული"
   ko: "한국어"
   lt: "Lietuviškai"
   mk: "македонски"
@@ -40,57 +48,74 @@ available:
   nn: "Nynorsk"
   pa: "ਪੰਜਾਬੀ"
   pl: "polski"
-  pt-BR: "Português"
+  pt-PT: "Português (Portugal)"
+  pt-BR: "Português (Brasil)"
   ro: "Română"
   ru: "Русский"
+  si: "සිංහල"
   sk: "Slovenčina"
   sl: "Slovenščina"
   sq: "gjuha shqipe"
+  sr: "српски језик"
   sv: "Svenska"
   te: "తెలుగు"
   tr: "Türk"
   uk: "украї́нська мо́ва"
   ur-PK: "اُردو (پاکستان)"
   vi: "Tiếng Việt"
+  wo: "Wolof"
   zh-CN: "中文"
   zh-TW: "台灣中文"
+
+
 fallbacks:
   en-GB:
-    - :en
+    - "en"
   en-US:
-    - :en
+    - "en"
   en_shaw:
-    - :en
-    - :en-GB
-    - :en-US
+    - "en"
+    - "en-GB"
+    - "en-US"
   en_pirate:
-    - :en
-    - :en-GB
-    - :en-US
+    - "en"
+    - "en-GB"
+    - "en-US"
   en_1337:
-    - :en
-    - :en-GB
-    - :en-US
+    - "en"
+    - "en-GB"
+    - "en-US"
   sv:
-    - :sv-SE
+    - "sv-SE"
   he:
-    - :he-IL
+    - "he-IL"
   es-AR:
-    - :es
+    - "es"
   es-CL:
-    - :es
+    - "es"
+  es-MX:
+    - "es"
+  es-VE:
+    - "es"
   gl:
-    - :gl-ES
+    - "gl-ES"
   zh:
-    - :zh-CN
-    - :zh-TW
+    - "zh-CN"
+    - "zh-TW"
   ur-PK:
-    - :ur
+    - "ur"
   de_formal:
-    - :de
+    - "de"
+  art_nvi:
+    - "art-nvi"
+  pt-BR:
+    - "pt"
+  pt-PT:
+    - "pt"
+
 rtl:
-  - :ar
-  - :he
-  - :ur
-  - :ur-PK
-  - :ms
+  - "ar"
+  - "he"
+  - "ur"
+  - "ur-PK"
+  - "ms"

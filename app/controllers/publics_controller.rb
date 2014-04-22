@@ -2,43 +2,25 @@
 #   licensed under the Affero General Public License version 3 or later.  See
 #   the COPYRIGHT file.
 
-require File.join(Rails.root, 'lib', 'stream', 'public')
-require 'newrelic_rpm' if File.exists?(File.expand_path("#{Rails.root}/config/newrelic.yml", __FILE__))
-
 class PublicsController < ApplicationController
-  require File.join(Rails.root, '/lib/diaspora/parser')
-  require File.join(Rails.root, '/lib/postzord/receiver/public')
-  require File.join(Rails.root, '/lib/postzord/receiver/private')
   include Diaspora::Parser
 
-  newrelic_ignore if File.exists?(File.expand_path("#{Rails.root}/config/newrelic.yml", __FILE__))
-
   skip_before_filter :set_header_data
-  skip_before_filter :which_action_and_user
   skip_before_filter :set_grammatical_gender
-  before_filter :allow_cross_origin, :only => [:hcard, :host_meta, :webfinger]
   before_filter :check_for_xml, :only => [:receive, :receive_public]
   before_filter :authenticate_user!, :only => [:index]
 
   respond_to :html
   respond_to :xml, :only => :post
 
-  def allow_cross_origin
-    headers["Access-Control-Allow-Origin"] = "*"
-  end
+  caches_page :host_meta, :if => Proc.new{ Rails.env == 'production'}
 
   layout false
-  caches_page :host_meta
 
   def hcard
-    @person = Person.where(:guid => params[:guid]).first
+    @person = Person.find_by_guid_and_closed_account(params[:guid], false)
 
-    if @person && @person.closed_account?
-      render :nothing => true, :status => 404
-      return
-    end
-
-    unless @person.nil? || @person.owner.nil?
+    if @person.present? && @person.local?
       render 'publics/hcard'
     else
       render :nothing => true, :status => 404
@@ -52,16 +34,13 @@ class PublicsController < ApplicationController
   def webfinger
     @person = Person.local_by_account_identifier(params[:q]) if params[:q]
 
-    if @person && @person.closed_account?
+    if @person.nil? || @person.closed_account?
       render :nothing => true, :status => 404
       return
     end
 
-    unless @person.nil?
-      render 'webfinger', :content_type => 'application/xrd+xml'
-    else
-      render :nothing => true, :status => 404
-    end
+    FEDERATION_LOGGER.info("webfinger profile request for :#{@person.id}")
+    render 'webfinger', :content_type => 'application/xrd+xml'
   end
 
   def hub
@@ -69,12 +48,13 @@ class PublicsController < ApplicationController
   end
 
   def receive_public
-    Resque.enqueue(Jobs::ReceiveUnencryptedSalmon, CGI::unescape(params[:xml]))
+    FEDERATION_LOGGER.info("recieved a public message")
+    Workers::ReceiveUnencryptedSalmon.perform_async(CGI::unescape(params[:xml]))
     render :nothing => true, :status => :ok
   end
 
   def receive
-    person = Person.where(:guid => params[:guid]).first
+    person = Person.find_by_guid(params[:guid])
 
     if person.nil? || person.owner_id.nil?
       Rails.logger.error("Received post for nonexistent person #{params[:guid]}")
@@ -83,11 +63,12 @@ class PublicsController < ApplicationController
     end
 
     @user = person.owner
-    Resque.enqueue(Jobs::ReceiveEncryptedSalmon, @user.id, CGI::unescape(params[:xml]))
+
+    FEDERATION_LOGGER.info("recieved a private message for user:#{@user.id}")
+    Workers::ReceiveEncryptedSalmon.perform_async(@user.id, CGI::unescape(params[:xml]))
 
     render :nothing => true, :status => 202
   end
-
 
   private
 

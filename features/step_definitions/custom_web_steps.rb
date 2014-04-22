@@ -1,18 +1,67 @@
+module ScreenshotCukeHelpers
+
+  def set_screenshot_location(path)
+    @screenshot_path = Rails.root.join('tmp','screenshots', path)
+    @screenshot_path.mkpath unless @screenshot_path.exist?
+  end
+
+  def take_screenshot(name, path)
+    visit send("#{path}_path")
+    browser = page.driver.browser
+    pic = @screenshot_path.join("#{name}.png")
+
+    sleep 0.5
+
+    browser.manage.window.resize_to(1280, 1024)
+    browser.save_screenshot(pic)
+  end
+
+  def take_screenshots_without_login
+    pages = {
+      'register' => 'new_user_registration',
+      'login'    => 'user_session'
+    }
+
+    pages.each do |name, path|
+      take_screenshot name, path
+    end
+  end
+
+  def take_screenshots_with_login
+    pages = {
+      'stream'        => 'stream',
+      'activity'      => 'activity_stream',
+      'mentions'      => 'mentioned_stream',
+      'aspects'       => 'aspects_stream',
+      'tags'          => 'followed_tags_stream',
+      'contacts'      => 'contacts',
+      'settings'      => 'edit_user',
+      'notifications' => 'notifications',
+      'conversations' => 'conversations',
+      'logout'        => 'destroy_user_session'
+    }
+
+    pages.each do |name, path|
+      take_screenshot name, path
+    end
+  end
+
+end
+World(ScreenshotCukeHelpers)
+
+
 When /^(.*) in the header$/ do |action|
   within('header') do
     step action
   end
 end
 
-And /^I expand the publisher$/ do
-  page.execute_script('
-    $("#publisher").removeClass("closed");
-    $("#publisher").find("textarea").focus();
-    ')
+And /^I submit the form$/ do
+  find("input[type='submit']").click
 end
 
-When 'I click the aspects title' do
-  find('.home_selector').click
+And /^I expand the publisher$/ do
+ click_publisher
 end
 
 When /^I press the aspect dropdown$/ do
@@ -24,69 +73,76 @@ And /^I toggle the aspect "([^"]*)"$/ do |aspect_name|
   find(".dropdown li[data-aspect_id='#{aspect.id}']").click
 end
 
-Then /^the publisher should be collapsed$/ do
-  find("#publisher")["class"].should include("closed")
-end
-
 Then /^the publisher should be expanded$/ do
   find("#publisher")["class"].should_not include("closed")
 end
 
+Then /^the text area wrapper mobile should be with attachments$/ do
+  find("#publisher_textarea_wrapper")["class"].should include("with_attachments")
+end
+
 When /^I append "([^"]*)" to the publisher$/ do |stuff|
-  # Wait for the publisher to appear and all the elements to lay out
-  wait_until { evaluate_script("$('#status_message_fake_text').focus().length == 1") }
+  elem = find('#status_message_fake_text')
+  elem.native.send_keys(' ' + stuff)
+end
 
-  # Write to the placeholder field and trigger a keyup to start the copy
-  page.execute_script <<-JS
-    $('#status_message_fake_text').val($('#status_message_fake_text').val() + '#{stuff}');
-    $('#status_message_fake_text').keyup();
-  JS
+When /^I append "([^"]*)" to the publisher mobile$/ do |stuff|
+  elem = find('#status_message_text')
+  elem.native.send_keys(' ' + stuff)
 
-  # Wait until the text appears in the placeholder
-  wait_until do
-    evaluate_script("$('#status_message_fake_text').val().match(/#{stuff}/) != null")
-  end
+  find('#status_message_text').value.should include(stuff)
+end
 
-  # WAIT FOR IT!...
-
-  # Wait until the text copy is finished
-  wait_until do
-    evaluate_script <<-JS
-      $('#status_message_text').val() && ($('#status_message_text').val().match(/#{stuff}/) != null)
-    JS
+And /^I want to mention (?:him|her) from the profile$/ do
+  find('#mention_button').click
+  within('#facebox') do
+    click_publisher
   end
 end
 
 And /^I hover over the "([^"]+)"$/ do |element|
-  page.execute_script("$(\"#{element}\").first().addClass('hover')")
+  find("#{element}", match: :first).hover
+end
+
+When /^I prepare the deletion of the first post$/ do
+  within(find('.stream .stream_element')) do
+    ctrl = find('.controls')
+    ctrl.hover
+    ctrl.find('.remove_post').click
+  end
 end
 
 When /^I click to delete the first post$/ do
-  page.execute_script('$(".stream_element").first().find(".remove_post").first().click()')
+  step "I prepare the deletion of the first post"
+  step "I confirm the alert"
 end
 
 When /^I click to delete the first comment$/ do
-  page.execute_script('$(".comment.posted").first().find(".comment_delete").click()')
+  within("div.comment", match: :first) do
+    find(".controls").hover
+    find(".comment_delete").click
+  end
 end
 
 When /^I click to delete the first uploaded photo$/ do
-  page.execute_script('$("#photodropzone").find(".x").first().click()')
-end
-
-And /^I click "([^"]*)" button$/ do |arg1|
-  page.execute_script('$(".button:contains('+arg1+')").click()')
+  page.execute_script("$('#photodropzone .x').css('display', 'block');")
+  find("#photodropzone .x", match: :first).click
 end
 
 And /^I click on selector "([^"]*)"$/ do |selector|
-  page.execute_script("$('#{selector}').click();")
+  find(selector).click
 end
 
-And /^I preemptively confirm the alert$/ do
-  page.evaluate_script("window.confirm = function() { return true; }")
+And /^I click on the first selector "([^"]*)"$/ do |selector|
+  find(selector, match: :first).click
 end
 
-And /^I preemptively reject the alert$/ do
-  page.evaluate_script("window.confirm = function() { return false; }")
+And /^I confirm the alert$/ do
+  page.driver.browser.switch_to.alert.accept
+end
+
+And /^I reject the alert$/ do
+  page.driver.browser.switch_to.alert.dismiss
 end
 
 When /^(.*) in the modal window$/ do |action|
@@ -97,63 +153,40 @@ end
 
 When /^I press the first "([^"]*)"(?: within "([^"]*)")?$/ do |link_selector, within_selector|
   with_scope(within_selector) do
-    find(:css, link_selector).click
+    current_scope.find(link_selector, match: :first).click
   end
 end
 
 When /^I press the ([\d])(?:nd|rd|st|th) "([^\"]*)"(?: within "([^\"]*)")?$/ do |number, link_selector, within_selector|
   with_scope(within_selector) do
-    find(:css, link_selector+":nth-child(#{number})").click
+    current_scope.find(:css, link_selector+":nth-child(#{number})").click
   end
 end
 
 Then /^(?:|I )should see a "([^\"]*)"(?: within "([^\"]*)")?$/ do |selector, scope_selector|
   with_scope(scope_selector) do
-    page.has_css?(selector).should be_true
+    current_scope.should have_css selector
   end
 end
 
 Then /^(?:|I )should not see a "([^\"]*)"(?: within "([^\"]*)")?$/ do |selector, scope_selector|
   with_scope(scope_selector) do
-    page.has_css?(selector, :visible => true).should be_false
+    current_scope.has_css?(selector, :visible => true).should be_false
   end
 end
 
-When /^I wait for the ajax to finish$/ do
-  wait_until(30) { evaluate_script("$.active") == 0 }
+Then /^page should (not )?have "([^\"]*)"$/ do |negate, selector|
+  page.has_css?(selector).should ( negate ? be_false : be_true )
 end
 
 When /^I have turned off jQuery effects$/ do
-  evaluate_script("$.fx.off = true")
-end
-
-When /^I attach the file "([^\"]*)" to hidden element "([^\"]*)"(?: within "([^\"]*)")?$/ do |path, field, selector|
-  page.execute_script <<-JS
-    $("#{selector || 'body'}").find("input[name=#{field}]").css({opacity: 1});
-  JS
-
-  if selector
-    step "I attach the file \"#{Rails.root.join(path).to_s}\" to \"#{field}\" within \"#{selector}\""
-  else
-    step "I attach the file \"#{Rails.root.join(path).to_s}\" to \"#{field}\""
-  end
-
-  page.execute_script <<-JS
-    $("#{selector || 'body'}").find("input[name=#{field}]").css({opacity: 0});
-  JS
-end
-
-Then /^I should get download alert$/ do
-  page.evaluate_script("window.alert = function() { return true; }")
+  page.execute_script("$.fx.off = true")
 end
 
 When /^I search for "([^\"]*)"$/ do |search_term|
-  step "I fill in \"q\" with \"#{search_term}\""
-  page.execute_script <<-JS
-    var e = jQuery.Event("keypress");
-    e.keyCode = 13;
-    $("#q").trigger(e);
-  JS
+  fill_in "q", :with => search_term
+  find_field("q").native.send_key(:enter)
+  find("#leftNavBar")
 end
 
 Then /^the "([^"]*)" field(?: within "([^"]*)")? should be filled with "([^"]*)"$/ do |field, selector, value|
@@ -161,16 +194,8 @@ Then /^the "([^"]*)" field(?: within "([^"]*)")? should be filled with "([^"]*)"
     field = find_field(field)
     field_value = (field.tag_name == 'textarea') ? field.text : field.value
     field_value = field_value.first if field_value.is_a? Array
-    if field_value.respond_to? :should
-      field_value.should == value
-    else
-      assert_equal(value, field_value)
-    end
+    field_value.should == value
   end
-end
-
-Then /^I should see (\d+) posts$/ do |n_posts|
-  has_css?("#main_stream .stream_element", :count => n_posts.to_i).should be_true
 end
 
 Then /^I should see (\d+) contacts$/ do |n_posts|
@@ -178,10 +203,7 @@ Then /^I should see (\d+) contacts$/ do |n_posts|
 end
 
 And /^I scroll down$/ do
-  evaluate_script("window.scrollBy(0,3000000)")
-  sleep 1
-  wait_until(30) { evaluate_script('$("#infscr-loading:visible").length') == 0 }
-  step "I wait for the ajax to finish"
+  page.execute_script("window.scrollBy(0,3000000)")
 end
 
 Then /^the notification dropdown should be visible$/ do
@@ -194,12 +216,6 @@ When /^I resize my window to 800x600$/ do
   JS
 end
 
-Then /^I follow Edit Profile in the same window$/ do
-  page.execute_script("$('a[href=\"#{edit_profile_path}\"]').removeAttr('target')")
-
-  step %(I follow "Edit Profile")
-end
-
 Then 'I should see an image attached to the post' do
   step %{I should see a "img" within ".stream_element div.photo_attachments"}
 end
@@ -209,20 +225,51 @@ Then 'I press the attached image' do
 end
 
 And "I wait for the popovers to appear" do
-  wait_until(30) { evaluate_script('$(".popover").length') == 3 }
+  page.should have_selector(".popover", count: 3)
 end
 
 And /^I click close on all the popovers$/ do
-  page.execute_script("var time = 400; $('.popover .close').each(
-          function(index, element){ setTimeout(function(){ $(element).click()},time);
-          time += 800;
- });")
+  page.execute_script("$('.popover .close').click();")
+  page.should_not have_selector(".popover .close")
 end
 
-Then /^I should see first post deletion link$/ do
-  page.evaluate_script("$('.stream_element .delete').first().css('display')").should == "inline"
+Then /^I should see a flash message indicating success$/ do
+  flash_message_success?.should be_true
 end
 
-Then /^I should not see ajax loader on deletion link place$/ do
-  page.evaluate_script("$('.hide_loader').first().css('display')").should == "none"
+Then /^I should see a flash message containing "(.+)"$/ do |text|
+  flash_message_containing? text
+end
+
+Given /^the reference screenshot directory is used$/ do
+  set_screenshot_location 'reference'
+end
+
+Given /^the comparison screenshot directory is used$/ do
+  set_screenshot_location 'current'
+end
+
+When /^I take the screenshots while logged out$/ do
+  take_screenshots_without_login
+end
+
+When /^I take the screenshots while logged in$/ do
+  take_screenshots_with_login
+end
+
+When /^I focus the "([^"]+)" field$/ do |field|
+  find_field(field).click
+end
+
+Given /^I have configured a Bitcoin address$/ do
+  AppConfig.settings.bitcoin_address = "AAAAAA"
+end
+
+Then /^I should see the Bitcoin address$/ do
+  find("#bitcoin_address")['value'].should == "AAAAAA"
+end
+
+Given /^"([^"]*)" is hidden$/ do |selector|
+  page.should have_selector(selector, visible: false)
+  page.should_not have_selector(selector)
 end

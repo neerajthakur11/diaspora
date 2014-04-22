@@ -3,31 +3,37 @@
 #   the COPYRIGHT file.
 
 require 'i18n_interpolation_fallbacks'
+require "i18n/backend/fallbacks"
+
+settings_file = Pathname.new(__FILE__).dirname.join('..').expand_path.join('locale_settings.yml')
+if settings_file.exist?
+  locale_settings = YAML.load_file(settings_file)
+  AVAILABLE_LANGUAGES = (locale_settings['available'].length > 0) ? locale_settings['available'] : { "en" => 'English' }
+  AVAILABLE_LANGUAGE_CODES = locale_settings['available'].keys
+  LANGUAGE_CODES_MAP = locale_settings['fallbacks']
+  RTL_LANGUAGES = locale_settings['rtl']
+else
+  AVAILABLE_LANGUAGES = { "en" => 'English' }
+  AVAILABLE_LANGUAGE_CODES = ["en"]
+  LANGUAGE_CODES_MAP = {}
+  RTL_LANGUAGES = []
+end
+
+DEFAULT_LANGUAGE = "en"
+
 
 # The default locale is :en and all translations from config/locales/*.rb,yml are auto loaded.
-I18n.load_path += Dir[Rails.root.join('config', 'locales', '**', '*.{rb,yml}')]
+# Use the railtie configuration option to ensure overiding devise.
+Diaspora::Application.config.i18n.load_path += Dir[Rails.root.join('config', 'locales', '**', '*.{rb,yml}')]
 I18n.default_locale = DEFAULT_LANGUAGE
 
 I18n::Backend::Simple.send(:include, I18n::Backend::InterpolationFallbacks)
-
 I18n::Backend::Simple.send(:include, I18n::Backend::Fallbacks)
-AVAILABLE_LANGUAGE_CODES.each do |c|
-  if LANGUAGE_CODES_MAP.key?(c)
-    I18n.fallbacks[c.to_sym] = LANGUAGE_CODES_MAP[c]
-    I18n.fallbacks[c.to_sym].concat([c.to_sym, DEFAULT_LANGUAGE.to_sym, :en])
-  else
-    I18n.fallbacks[c.to_sym] = [c.to_sym, DEFAULT_LANGUAGE.to_sym, :en]
-  end
-end
 
-# There's almost certainly a better way to do this.
-# Maybe by loading our paths in the initializer hooks, they'll end up after the gem paths?
-class I18n::Railtie
-  class << self
-    def initialize_i18n_with_path_cleanup *args
-      initialize_i18n_without_path_cleanup *args
-      I18n.load_path.reject!{|path| path.match(/devise_invitable/) }
-    end
-    alias_method_chain :initialize_i18n, :path_cleanup
+AVAILABLE_LANGUAGE_CODES.each do |c|
+  I18n.fallbacks[c] = [c]
+  if LANGUAGE_CODES_MAP.key?(c)
+    I18n.fallbacks[c].concat(LANGUAGE_CODES_MAP[c])
   end
+  I18n.fallbacks[c].concat([DEFAULT_LANGUAGE, "en"])
 end

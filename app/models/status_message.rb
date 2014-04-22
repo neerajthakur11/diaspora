@@ -3,7 +3,6 @@
 #   the COPYRIGHT file.
 
 class StatusMessage < Post
-  include Diaspora::Socketable
   include Diaspora::Taggable
 
   include ActionView::Helpers::TextHelper
@@ -13,32 +12,34 @@ class StatusMessage < Post
   extract_tags_from :raw_message
 
   validates_length_of :text, :maximum => 65535, :message => I18n.t('status_messages.too_long', :count => 65535)
+
+  # don't allow creation of empty status messages
+  validate :presence_of_content, on: :create, if: proc { |sm| sm.author.local? }
+
   xml_name :status_message
   xml_attr :raw_message
+  xml_attr :photos, :as => [Photo]
+  xml_attr :location, :as => Location
 
   has_many :photos, :dependent => :destroy, :foreign_key => :status_message_guid, :primary_key => :guid
 
+  has_one :location
+
   # a StatusMessage is federated before its photos are so presence_of_content() fails erroneously if no text is present
   # therefore, we put the validation in a before_destory callback instead of a validation
-  before_destroy :presence_of_content
+  before_destroy :absence_of_content
 
-  attr_accessible :text, :provider_display_name
   attr_accessor :oembed_url
+  attr_accessor :open_graph_url
 
+  before_create :filter_mentions
   after_create :create_mentions
-  after_create :queue_gather_oembed_data, :if => :contains_oembed_url_in_text?
+  after_commit :queue_gather_oembed_data, :on => :create, :if => :contains_oembed_url_in_text?
+  after_commit :queue_gather_open_graph_data, :on => :create, :if => :contains_open_graph_url_in_text?
 
   #scopes
   scope :where_person_is_mentioned, lambda { |person|
     joins(:mentions).where(:mentions => {:person_id => person.id})
-  }
-
-  scope :commented_by, lambda { |person|
-    select('DISTINCT posts.*').joins(:comments).where(:comments => {:author_id => person.id})
-  }
-
-  scope :liked_by, lambda { |person|
-    joins(:likes).where(:likes => {:author_id => person.id})
   }
 
   def self.guids_for_author(person)
@@ -67,33 +68,21 @@ class StatusMessage < Post
     write_attribute(:text, text)
   end
 
-  def nsfw?
-    self.raw_message.include?('#nsfw')
+  def attach_photos_by_ids(photo_ids)
+    return [] unless photo_ids.present?
+    self.photos << Photo.where(:id => photo_ids, :author_id => self.author_id).all
+  end
+
+  def nsfw
+    self.raw_message.match(/#nsfw/i) || super
   end
 
   def formatted_message(opts={})
     return self.raw_message unless self.raw_message
 
-    escaped_message = opts[:plain_text] ? self.raw_message: ERB::Util.h(self.raw_message)
-    mentioned_message = self.format_mentions(escaped_message, opts)
+    escaped_message = opts[:plain_text] ? self.raw_message : ERB::Util.h(self.raw_message)
+    mentioned_message = Diaspora::Mentionable.format(escaped_message, self.mentioned_people, opts)
     Diaspora::Taggable.format_tags(mentioned_message, opts.merge(:no_escape => true))
-  end
-
-  def format_mentions(text, opts = {})
-    regex = /@\{([^;]+); ([^\}]+)\}/
-    form_message = text.to_str.gsub(regex) do |matched_string|
-      people = self.mentioned_people
-      person = people.detect{ |p|
-        p.diaspora_handle == $~[2] unless p.nil?
-      }
-
-      if opts[:plain_text]
-        person ? ERB::Util.h(person.name) : ERB::Util.h($~[1])
-      else
-        person ? person_link(person, :class => 'mention hovercardable') : ERB::Util.h($~[1])
-      end
-    end
-    form_message
   end
 
   def mentioned_people
@@ -101,13 +90,21 @@ class StatusMessage < Post
       create_mentions if self.mentions.empty?
       self.mentions.includes(:person => :profile).map{ |mention| mention.person }
     else
-      mentioned_people_from_string
+      Diaspora::Mentionable.people_from_string(self.raw_message)
     end
   end
 
+  ## TODO ----
+  # don't put presentation logic in the model!
+  def mentioned_people_names
+    self.mentioned_people.map(&:name).join(', ')
+  end
+  ## ---- ----
+
   def create_mentions
-    mentioned_people_from_string.each do |person|
-      self.mentions.create(:person => person)
+    ppl = Diaspora::Mentionable.people_from_string(self.raw_message)
+    ppl.each do |person|
+      self.mentions.find_or_create_by_person_id(person.id)
     end
   end
 
@@ -119,50 +116,20 @@ class StatusMessage < Post
     self.mentions.where(:person_id => person.id).first.try(:notify_recipient)
   end
 
-  def mentioned_people_from_string
-    regex = /@\{([^;]+); ([^\}]+)\}/
-    identifiers = self.raw_message.scan(regex).map do |match|
-      match.last
-    end
-    identifiers.empty? ? [] : Person.where(:diaspora_handle => identifiers)
+  def after_dispatch(sender)
+    self.update_and_dispatch_attached_photos(sender)
   end
 
-  def to_activity(opts={})
-    author = opts[:author] || self.author #Use an already loaded author if passed in.
-    <<-XML
-  <entry>
-    <title>#{x(self.formatted_message(:plain_text => true))}</title>
-    <content>#{x(self.formatted_message(:plain_text => true))}</content>
-    <link rel="alternate" type="text/html" href="#{author.url}p/#{self.id}"/>
-    <id>#{author.url}p/#{self.id}</id>
-    <published>#{self.created_at.xmlschema}</published>
-    <updated>#{self.updated_at.xmlschema}</updated>
-    <activity:verb>http://activitystrea.ms/schema/1.0/post</activity:verb>
-    <activity:object-type>http://activitystrea.ms/schema/1.0/note</activity:object-type>
-  </entry>
-    XML
-  end
-
-  def socket_to_user(user_or_id, opts={})
-    unless opts[:aspect_ids]
-      user_id = user_or_id.instance_of?(Fixnum) ? user_or_id : user_or_id.id
-      aspect_ids = AspectMembership.connection.select_values(
-        AspectMembership.joins(:contact).where(:contacts => {:user_id => user_id, :person_id => self.author_id}).select('aspect_memberships.aspect_id').to_sql
-      )
-      opts.merge!(:aspect_ids => aspect_ids)
-    end
-    super(user_or_id, opts)
-  end
-
-  def after_dispatch sender
-    unless self.photos.empty?
-      self.photos.update_all(:pending => false, :public => self.public)
-      for photo in self.photos
+  def update_and_dispatch_attached_photos(sender)
+    if self.photos.any?
+      self.photos.update_all(:public => self.public)
+      self.photos.each do |photo|
         if photo.pending
           sender.add_to_streams(photo, self.aspects)
           sender.dispatch_post(photo)
         end
       end
+      self.photos.update_all(:pending => false)
     end
   end
 
@@ -170,36 +137,61 @@ class StatusMessage < Post
     formatted_message(:plain_text => true)
   end
 
+  def first_photo_url(*args)
+    photos.first.url(*args)
+  end
+
   def text_and_photos_blank?
     self.text.blank? && self.photos.blank?
   end
 
   def queue_gather_oembed_data
-    Resque.enqueue(Jobs::GatherOEmbedData, self.id, self.oembed_url)
+    Workers::GatherOEmbedData.perform_async(self.id, self.oembed_url)
+  end
+
+  def queue_gather_open_graph_data
+    Workers::GatherOpenGraphData.perform_async(self.id, self.open_graph_url)
   end
 
   def contains_oembed_url_in_text?
-    require 'uri'
     urls = URI.extract(self.raw_message, ['http', 'https'])
-    self.oembed_url = urls.find{|url| ENDPOINT_HOSTS_STRING.match(URI.parse(url).host)}
+    self.oembed_url = urls.find{ |url| !TRUSTED_OEMBED_PROVIDERS.find(url).nil? }
   end
 
-  def update_photos_counter
-    StatusMessage.where(:id => self.id).
-      update_all(:photos_count => self.photos.count)
+  def contains_open_graph_url_in_text?
+    return nil if self.contains_oembed_url_in_text?
+    self.open_graph_url = URI.extract(self.raw_message, ['http', 'https'])[0]
+  end
+
+  def address
+    location.try(:address)
   end
 
   protected
   def presence_of_content
+    if text_and_photos_blank?
+      errors[:base] << "Cannot create a StatusMessage without content"
+    end
+  end
+
+  def absence_of_content
     unless text_and_photos_blank?
       errors[:base] << "Cannot destory a StatusMessage with text and/or photos present"
     end
   end
 
-  private
-  def self.tag_stream(tag_ids)
-    joins(:tags).where(:tags => {:id => tag_ids})
+  def filter_mentions
+    return if self.public? || self.aspects.empty?
+
+    author_usr = self.author.try(:owner)
+    aspect_ids = self.aspects.map(&:id)
+
+    self.raw_message = Diaspora::Mentionable.filter_for_aspects(self.raw_message, author_usr, *aspect_ids)
   end
 
+  private
+  def self.tag_stream(tag_ids)
+    joins(:taggings).where('taggings.tag_id IN (?)', tag_ids)
+  end
 end
 

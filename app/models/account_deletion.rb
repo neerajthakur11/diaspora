@@ -3,17 +3,15 @@
 #   the COPYRIGHT file.
 
 class AccountDeletion < ActiveRecord::Base
-  include ROXML
-  include Diaspora::Webhooks
+  include Diaspora::Federated::Base
 
 
   belongs_to :person
-  after_create :queue_delete_account
-
-  attr_accessible :person
+  after_commit :queue_delete_account, :on => :create
 
   xml_name :account_deletion
   xml_attr :diaspora_handle
+
 
   def person=(person)
     self[:diaspora_handle] = person.diaspora_handle
@@ -26,7 +24,7 @@ class AccountDeletion < ActiveRecord::Base
   end
 
   def queue_delete_account
-    Resque.enqueue(Jobs::DeleteAccount, self.id)
+    Workers::DeleteAccount.perform_async(self.id)
   end
 
   def perform!

@@ -7,7 +7,7 @@ require 'spec_helper'
 describe Stream::Aspect do
   describe '#aspects' do
     it 'queries the user given initialized aspect ids' do
-      alice = stub.as_null_object
+      alice = double.as_null_object
       stream = Stream::Aspect.new(alice, [1,2,3])
 
       alice.aspects.should_receive(:where)
@@ -15,7 +15,7 @@ describe Stream::Aspect do
     end
 
     it "returns all the user's aspects if no aspect ids are specified" do
-      alice = stub.as_null_object
+      alice = double.as_null_object
       stream = Stream::Aspect.new(alice, [])
 
       alice.aspects.should_not_receive(:where)
@@ -23,7 +23,7 @@ describe Stream::Aspect do
     end
 
     it 'filters aspects given a user' do
-      alice = stub(:aspects => [stub(:id => 1)])
+      alice = double(:aspects => [double(:id => 1)])
       alice.aspects.stub(:where).and_return(alice.aspects)
       stream = Stream::Aspect.new(alice, [1,2,3])
 
@@ -33,8 +33,8 @@ describe Stream::Aspect do
 
   describe '#aspect_ids' do
     it 'maps ids from aspects' do
-      alice = stub.as_null_object
-      aspects = stub.as_null_object
+      alice = double.as_null_object
+      aspects = double.as_null_object
 
       stream = Stream::Aspect.new(alice, [1,2])
 
@@ -46,39 +46,39 @@ describe Stream::Aspect do
 
   describe '#posts' do
     before do
-      @alice = stub.as_null_object
+      @alice = double.as_null_object
     end
 
     it 'calls visible posts for the given user' do
       stream = Stream::Aspect.new(@alice, [1,2])
 
-      @alice.should_receive(:visible_shareables).and_return(stub.as_null_object)
+      @alice.should_receive(:visible_shareables).and_return(double.as_null_object)
       stream.posts
     end
 
-    it 'is called with 3 types' do
+    it 'is called with 2 types' do
       stream = Stream::Aspect.new(@alice, [1,2], :order => 'created_at')
-      @alice.should_receive(:visible_shareables).with(Post, hash_including(:type=> ['StatusMessage', 'Reshare', 'ActivityStreams::Photo'])).and_return(stub.as_null_object)
+      @alice.should_receive(:visible_shareables).with(Post, hash_including(:type=> ['StatusMessage', 'Reshare'])).and_return(double.as_null_object)
       stream.posts
     end
 
-    it 'respects ordering' do 
+    it 'respects ordering' do
       stream = Stream::Aspect.new(@alice, [1,2], :order => 'created_at')
-      @alice.should_receive(:visible_shareables).with(Post, hash_including(:order => 'created_at DESC')).and_return(stub.as_null_object)
+      @alice.should_receive(:visible_shareables).with(Post, hash_including(:order => 'created_at DESC')).and_return(double.as_null_object)
       stream.posts
     end
 
     it 'respects max_time' do
       stream = Stream::Aspect.new(@alice, [1,2], :max_time => 123)
-      @alice.should_receive(:visible_shareables).with(Post, hash_including(:max_time => instance_of(Time))).and_return(stub.as_null_object)
+      @alice.should_receive(:visible_shareables).with(Post, hash_including(:max_time => instance_of(Time))).and_return(double.as_null_object)
       stream.posts
     end
 
     it 'passes for_all_aspects to visible posts' do
       stream = Stream::Aspect.new(@alice, [1,2], :max_time => 123)
-      all_aspects = mock
+      all_aspects = double
       stream.stub(:for_all_aspects?).and_return(all_aspects)
-      @alice.should_receive(:visible_shareables).with(Post, hash_including(:all_aspects? => all_aspects)).and_return(stub.as_null_object)
+      @alice.should_receive(:visible_shareables).with(Post, hash_including(:all_aspects? => all_aspects)).and_return(double.as_null_object)
       stream.posts
     end
   end
@@ -87,19 +87,19 @@ describe Stream::Aspect do
     it 'should call Person.all_from_aspects' do
       class Person ; end
 
-      alice = stub.as_null_object
+      alice = double.as_null_object
       aspect_ids = [1,2,3]
       stream = Stream::Aspect.new(alice, [])
 
       stream.stub(:aspect_ids).and_return(aspect_ids)
-      Person.should_receive(:all_from_aspects).with(stream.aspect_ids, alice).and_return(stub(:includes => :profile))
+      Person.should_receive(:unique_from_aspects).with(stream.aspect_ids, alice).and_return(double(:includes => :profile))
       stream.people
     end
   end
 
   describe '#aspect' do
     before do
-      alice = stub.as_null_object
+      alice = double.as_null_object
       @stream = Stream::Aspect.new(alice, [1,2])
     end
 
@@ -116,7 +116,7 @@ describe Stream::Aspect do
 
   describe 'for_all_aspects?' do
     before do
-      alice = stub.as_null_object
+      alice = double.as_null_object
       alice.aspects.stub(:size).and_return(2)
       @stream = Stream::Aspect.new(alice, [1,2])
     end
@@ -129,40 +129,6 @@ describe Stream::Aspect do
     it "is false if the count of aspect_ids is not equal to the size of the user's aspect count" do
       @stream.aspect_ids.stub(:length).and_return(1)
       @stream.should_not be_for_all_aspects
-    end
-  end
-
-  describe '.ajax_stream?' do
-    before do
-      @original_value = AppConfig[:redis_cache] 
-      @stream = Stream::Aspect.new(stub, stub)
-    end
-
-    after do
-      AppConfig[:redis_cache] = @original_value
-    end
-
-    context 'if we are not caching with redis' do
-      before do
-        AppConfig[:redis_cache] = false
-      end
-
-      it 'is true if stream is for all aspects?' do
-        @stream.stub(:for_all_aspects?).and_return(true)
-        @stream.ajax_stream?.should be_true
-      end
-
-      it 'is false if it is not for all aspects' do
-        @stream.stub(:for_all_aspects?).and_return(false)
-        @stream.ajax_stream?.should be_false
-      end
-    end
-
-    context 'if we are caching with redis' do
-      it 'returns false' do
-        AppConfig[:redis_cache] = true
-        @stream.ajax_stream?.should be_false
-      end
     end
   end
 

@@ -3,13 +3,13 @@
 #   the COPYRIGHT file.
 
 require 'spec_helper'
-require File.join(Rails.root, 'lib/diaspora/exporter')
+require Rails.root.join('lib', 'diaspora', 'exporter')
 
 describe Diaspora::Exporter do
 
   before do
     @user1 =  alice
-    @user2 =  Factory.create(:user)
+    @user2 =  FactoryGirl.create(:user)
     @user3 =  bob
 
     @aspect  =  @user1.aspects.first

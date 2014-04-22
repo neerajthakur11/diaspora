@@ -1,8 +1,8 @@
 require 'spec_helper'
 
 describe WebfingerProfile do
-  let(:webfinger_profile){File.open(File.join(Rails.root, "spec/fixtures/finger_xrd")).read.strip}
-  let(:not_diaspora_webfinger){File.open(File.join(Rails.root, "spec/fixtures/nonseed_finger_xrd")).read.strip}
+  let(:webfinger_profile){File.open(Rails.root.join("spec", "fixtures", "finger_xrd")).read.strip}
+  let(:not_diaspora_webfinger){File.open(Rails.root.join("spec", "fixtures", "nonseed_finger_xrd")).read.strip}
 
   let(:account){"tom@tom.joindiaspora.com"}
   let(:profile){ WebfingerProfile.new(account, webfinger_profile) }
@@ -22,6 +22,12 @@ describe WebfingerProfile do
 
       it 'should handle a non-diaspora profile without blowing up' do
         proc{ WebfingerProfile.new("evan@status.net", not_diaspora_webfinger)}.should_not raise_error 
+      end
+      
+      [:links, :hcard, :guid, :seed_location, :public_key].each do |field|
+        it 'should sets the #{field} field' do
+          profile.send(field).should be_present
+        end
       end
     end
   end

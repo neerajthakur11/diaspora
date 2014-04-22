@@ -4,17 +4,17 @@
 
 require 'spec_helper'
 
-describe Diaspora::UserModules::Connecting do
+describe User::Connecting do
 
   let(:aspect) { alice.aspects.first }
   let(:aspect1) { alice.aspects.create(:name => 'other') }
-  let(:person) { Factory.create(:person) }
+  let(:person) { FactoryGirl.create(:person) }
 
   let(:aspect2) { eve.aspects.create(:name => "aspect two") }
 
-  let(:person_one) { Factory.create :person }
-  let(:person_two) { Factory.create :person }
-  let(:person_three) { Factory.create :person }
+  let(:person_one) { FactoryGirl.create :person }
+  let(:person_two) { FactoryGirl.create :person }
+  let(:person_three) { FactoryGirl.create :person }
 
   describe 'disconnecting' do
     describe '#remove_contact' do
@@ -36,8 +36,14 @@ describe Diaspora::UserModules::Connecting do
 
     describe '#disconnected_by' do
       it 'calls remove contact' do
-        bob.should_receive(:remove_contact).with(bob.contact_for(alice.person))
+        bob.should_receive(:remove_contact).with(bob.contact_for(alice.person), :retracted => true)
         bob.disconnected_by(alice.person)
+      end
+
+      it 'removes contact sharing flag' do
+        bob.contacts.find_by_person_id(alice.person.id).should be_sharing
+        bob.disconnected_by(alice.person)
+        bob.contacts.find_by_person_id(alice.person.id).should_not be_sharing
       end
 
       it 'removes notitications' do
@@ -57,7 +63,7 @@ describe Diaspora::UserModules::Connecting do
       end
 
       it 'dispatches a retraction' do
-        p = mock()
+        p = double()
         Postzord::Dispatcher.should_receive(:build).and_return(p)
         p.should_receive(:post)
 
@@ -78,7 +84,7 @@ describe Diaspora::UserModules::Connecting do
 
   describe '#register_share_visibilities' do
     it 'creates post visibilites for up to 100 posts' do
-      Post.stub_chain(:where, :limit).and_return([Factory(:status_message, :public => true)])
+      Post.stub_chain(:where, :limit).and_return([FactoryGirl.create(:status_message)])
       c = Contact.create!(:user_id => alice.id, :person_id => eve.person.id)
       expect{
         alice.register_share_visibilities(c)
@@ -107,7 +113,7 @@ describe Diaspora::UserModules::Connecting do
 
     it 'adds a contact to an aspect' do
       contact = alice.contacts.create(:person => eve.person)
-      alice.contacts.stub!(:find_or_initialize_by_person_id).and_return(contact)
+      alice.contacts.stub(:find_or_initialize_by_person_id).and_return(contact)
 
       lambda {
         alice.share_with(eve.person, alice.aspects.first)
@@ -122,7 +128,7 @@ describe Diaspora::UserModules::Connecting do
     context 'dispatching' do
       it 'dispatches a request on initial request' do
         contact = alice.contacts.new(:person => eve.person)
-        alice.contacts.stub!(:find_or_initialize_by_person_id).and_return(contact)
+        alice.contacts.stub(:find_or_initialize_by_person_id).and_return(contact)
 
         contact.should_receive(:dispatch_request)
         alice.share_with(eve.person, alice.aspects.first)
@@ -132,7 +138,7 @@ describe Diaspora::UserModules::Connecting do
         eve.share_with(alice.person, eve.aspects.first)
 
         contact = alice.contact_for(eve.person)
-        alice.contacts.stub!(:find_or_initialize_by_person_id).and_return(contact)
+        alice.contacts.stub(:find_or_initialize_by_person_id).and_return(contact)
 
         contact.should_receive(:dispatch_request)
         alice.share_with(eve.person, alice.aspects.first)
@@ -142,10 +148,17 @@ describe Diaspora::UserModules::Connecting do
         a2 = alice.aspects.create(:name => "two")
 
         contact = alice.contacts.create(:person => eve.person, :receiving => true)
-        alice.contacts.stub!(:find_or_initialize_by_person_id).and_return(contact)
+        alice.contacts.stub(:find_or_initialize_by_person_id).and_return(contact)
 
         contact.should_not_receive(:dispatch_request)
         alice.share_with(eve.person, a2)
+      end
+
+      it 'posts profile' do
+        m = double()
+        Postzord::Dispatcher.should_receive(:build).twice.and_return(m)
+        m.should_receive(:post).twice
+        alice.share_with(eve.person, alice.aspects.first)
       end
     end
 
@@ -155,7 +168,7 @@ describe Diaspora::UserModules::Connecting do
     end
 
     it "should mark the corresponding notification as 'read'" do
-      notification = Factory.create(:notification, :target => eve.person)
+      notification = FactoryGirl.create(:notification, :target => eve.person)
 
       Notification.where(:target_id => eve.person.id).first.unread.should be_true
       alice.share_with(eve.person, aspect)
